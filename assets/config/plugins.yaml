@@ -1,0 +1,17 @@
+plugins:
+  - id: "ls_system"
+    name: "文件信息"
+    description: "使用ls命令查看文件信息"
+    type: "shell"
+    icon: "computer"
+    enabled: true
+    command_config:
+      executable_file: "ls"
+      executable_path: ""
+      parameters:
+        - name: "-al"
+          type: "filePath"
+          required: "true"
+          description: "指定要查看信息的文件"
+          value: ""
+          valueRegex: ""

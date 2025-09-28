@@ -1,0 +1,64 @@
+plugins:
+  - id: "shell_git"
+    name: "Git命令"
+    description: "快速执行Git相关命令"
+    type: "shell"
+    icon: "code"
+    enabled: true
+    category: "开发工具"
+    config:
+      command: "git"
+      working_directory: ""
+      parameters:
+        - name: "status"
+          display_name: "查看状态"
+          args: ["status"]
+          description: "查看Git仓库状态"
+        - name: "pull"
+          display_name: "拉取更新"
+          args: ["pull"]
+          description: "从远程仓库拉取最新代码"
+        - name: "push"
+          display_name: "推送代码"
+          args: ["push"]
+          description: "推送代码到远程仓库"
+
+  - id: "shell_docker"
+    name: "Docker命令"
+    description: "Docker容器管理工具"
+    type: "shell"
+    icon: "developer_board"
+    enabled: true
+    category: "开发工具"
+    config:
+      command: "docker"
+      working_directory: ""
+      parameters:
+        - name: "ps"
+          display_name: "查看容器"
+          args: ["ps", "-a"]
+          description: "查看所有Docker容器"
+        - name: "images"
+          display_name: "查看镜像"
+          args: ["images"]
+          description: "查看Docker镜像列表"
+
+  - id: "shell_system"
+    name: "系统工具"
+    description: "常用系统命令"
+    type: "shell"
+    icon: "computer"
+    enabled: true
+    category: "系统工具"
+    config:
+      command: ""
+      working_directory: ""
+      parameters:
+        - name: "top"
+          display_name: "系统监控"
+          args: ["top", "-l", "1"]
+          description: "查看系统进程信息"
+        - name: "df"
+          display_name: "磁盘使用"
+          args: ["df", "-h"]
+          description: "查看磁盘使用情况"
