@@ -1,350 +1,434 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import '../core/plugin_system/plugin_interface.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../core/plugin_system/plugin_interface.dart';  // 引入文本样式
 import '../core/plugin_system/plugin_loading_notifier.dart';
-import '../core/plugin_system/plugin_manager.dart';
-import '../core/plugin_system/plugin_models.dart';
 import '../core/plugin_system/icon_utils.dart';
-import '../core/utils/app_text_styles.dart'; // 添加导入
+import '../core/widgets/app_section_card.dart';
+import '../core/utils/app_text_styles.dart';
+import '../core/utils/app_logger.dart';
+import '../core/utils/app_layout_config.dart';
 import 'plugin_management_screen.dart';
+import 'log_viewer_screen.dart';
 
-class HomeScreen extends StatefulWidget {
+class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
-  final PluginLoadingNotifier _loadingNotifier = PluginLoadingNotifier();
+class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProviderStateMixin {
   late AnimationController _headerAnimationController;
   late Animation<double> _headerAnimation;
   Timer? _autoHideTimer;
   bool _isHeaderVisible = true;
+  bool _autoHideEnabled = true; // 添加自动隐藏控制标志
 
   @override
   void initState() {
     super.initState();
-    // 监听插件加载状态变化
-    _loadingNotifier.addListener(_onPluginStateChanged);
-    // 开始加载插件
-    _loadingNotifier.loadPlugins();
-    
-    // 初始化动画控制器
     _headerAnimationController = AnimationController(
-      duration: const Duration(milliseconds: 800),
+      duration: const Duration(milliseconds: 300),
       vsync: this,
     );
     
     _headerAnimation = Tween<double>(
-      begin: 0.0,  // 修改：从0开始（显示状态）
-      end: 1.0,    // 修改：到1结束（隐藏状态）
+      begin: 0.0,
+      end: 1.0,
     ).animate(CurvedAnimation(
       parent: _headerAnimationController,
       curve: Curves.easeInOut,
     ));
     
-    // 设置10秒后自动隐藏头部的定时器
-    _autoHideTimer = Timer(const Duration(seconds: 10), () {
-      _hideHeader();
+    // 修复：初始状态应该是显示头部，所以不要调用 forward()
+    // _headerAnimationController.forward(); // 删除这行
+    _startAutoHideTimer();
+    
+    // 使用Riverpod的方式初始化加载
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(pluginLoadingProvider.notifier).loadPlugins();
     });
   }
 
   @override
   void dispose() {
-    _loadingNotifier.removeListener(_onPluginStateChanged);
     _headerAnimationController.dispose();
     _autoHideTimer?.cancel();
     super.dispose();
   }
 
-  void _onPluginStateChanged() {
-    if (mounted) {
-      setState(() {});
+  void _startAutoHideTimer() {
+    _autoHideTimer?.cancel();
+    // 只有在启用自动隐藏时才设置定时器
+    if (_autoHideEnabled) {
+      _autoHideTimer = Timer(const Duration(seconds: 3), () {
+        if (mounted && _isHeaderVisible && _autoHideEnabled) {
+          _hideHeader();
+        }
+      });
     }
   }
 
-  void _hideHeader() {
+  void _hideHeader({bool isManual = false}) {
     if (_isHeaderVisible) {
       setState(() {
         _isHeaderVisible = false;
       });
-      _headerAnimationController.forward();  // 从0到1，隐藏头部
+      _headerAnimationController.forward(); // 向前播放动画隐藏头部
+      
+      // 如果是手动隐藏，禁用自动隐藏功能
+      if (isManual) {
+        _autoHideEnabled = false;
+        _autoHideTimer?.cancel();
+      }
     }
   }
 
-  void _showHeader() {
+  void _showHeader({bool isManual = false}) {
     if (!_isHeaderVisible) {
       setState(() {
         _isHeaderVisible = true;
       });
-      _headerAnimationController.reverse();  // 从1到0，显示头部
+      _headerAnimationController.reverse(); // 反向播放动画显示头部
+      
+      // 如果是手动显示，禁用自动隐藏功能
+      if (isManual) {
+        _autoHideEnabled = false;
+        _autoHideTimer?.cancel();
+      }
     }
+  }
+
+  // 清理缓存方法
+  void _clearCache() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('清理缓存'),
+          content: const Text('确定要清理应用缓存吗？这将清除所有临时数据。'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _performClearCache();
+              },
+              child: const Text('确定'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // 执行清理缓存
+  Future<void> _performClearCache() async {
+    try {
+      // 清理日志缓存
+      AppLogger.clearLogs();
+      
+      AppLogger.info('Cache cleared successfully');
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('缓存清理完成'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        
+        // 重新加载插件
+        ref.read(pluginLoadingProvider.notifier).clearCacheAndReload();
+      }
+    } catch (e) {
+      AppLogger.error('清理缓存失败', e);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('缓存清理失败: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  // 显示日志
+  void _showLogs() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => const LogViewerScreen(),
+      ),
+    );
+  }
+
+  // 统一的getActions方法
+  List<Widget> getActions() {
+    return [
+      PopupMenuButton<String>(
+        icon: Icon(
+          Icons.more_vert, 
+          color: _isHeaderVisible ? Colors.white : null,
+        ),
+        onSelected: (String value) {
+          switch (value) {
+            case 'toggle_header':
+              if (_isHeaderVisible) {
+                _hideHeader(isManual: true);
+              } else {
+                _showHeader(isManual: true);
+              }
+              break;
+            case 'clear_cache':
+              _clearCache();
+              break;
+            case 'show_logs':
+              _showLogs();
+              break;
+            case 'plugin_management':
+              _navigateToPluginManagement();
+              break;
+          }
+        },
+        itemBuilder: (BuildContext context) => [
+          PopupMenuItem<String>(
+            value: 'toggle_header',
+            child: Text(_isHeaderVisible ? '隐藏头部' : '显示头部'),
+          ),
+          const PopupMenuItem<String>(
+            value: 'plugin_management',
+            child: Text('插件管理'),
+          ),
+          const PopupMenuItem<String>(
+            value: 'clear_cache',
+            child: Text('清理缓存'),
+          ),
+          const PopupMenuItem<String>(
+            value: 'show_logs',
+            child: Text('显示日志'),
+          ),
+        ],
+      ),
+    ];
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("JARVIS", style: AppTextStyles.appBarTitle),
-        backgroundColor: Colors.cyan.shade700,
-        actions: [
-          IconButton(
-            tooltip: '插件管理',
-            icon: IconUtils.getIconWidget('extension', color: Colors.white),
-            onPressed: () => _navigateToPluginManagement(),
-          ),
-          // 添加刷新按钮
-          // 将刷新按钮换成清空缓存按钮
-          IconButton(
-            icon: IconUtils.getIconWidget('refresh', color: Colors.white),
-            tooltip: '清空缓存',
-            onPressed: _loadingNotifier.state == PluginLoadingState.loading 
-                ? null 
-                : () async {
-                    // 显示确认对话框
-                    final bool? confirmed = await showDialog<bool>(
-                      context: context,
-                      builder: (BuildContext context) {
-                        return AlertDialog(
-                          title: const Text('清空缓存'),
-                          content: const Text('这将清除所有插件缓存并重新从 YAML 文件加载配置。确定要继续吗？'),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.of(context).pop(false),
-                              child: const Text('取消'),
-                            ),
-                            TextButton(
-                              onPressed: () => Navigator.of(context).pop(true),
-                              child: const Text('确定'),
-                            ),
-                          ],
-                        );
-                      },
-                    );
-                    
-                    if (confirmed == true) {
-                      await _loadingNotifier.clearCacheAndReload();
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('缓存已清空，插件配置已重新加载'),
-                            backgroundColor: Colors.green,
-                          ),
-                        );
-                      }
-                    }
-                  },
-          ),
-          // 添加显示/隐藏头部的按钮
-          IconButton(
-            tooltip: _isHeaderVisible ? '隐藏头部' : '显示头部',
-            icon: IconUtils.getIconWidget(_isHeaderVisible ? 'keyboard_arrow_up' : 'keyboard_arrow_down', color: Colors.white),
-            onPressed: _isHeaderVisible ? _hideHeader : _showHeader,
-          ),
-        ],
+      appBar: _isHeaderVisible ? null : AppTextStyles.buildAppBar(
+        title: 'JARVIS',
+        actions: getActions(),
       ),
       body: Column(
         children: [
-          // JARVIS 风格的头部 - 带动画
-          AnimatedBuilder(
-            animation: _headerAnimation,
-            builder: (context, child) {
-              return Transform.translate(
-                offset: Offset(0, -200 * _headerAnimation.value),
-                child: Opacity(
-                  opacity: 1.0 - _headerAnimation.value,
-                  child: Container(
-                    height: 200 * (1.0 - _headerAnimation.value),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [Colors.cyan.shade700, Colors.cyan.shade900],
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                      ),
-                    ),
-                    child: Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          IconUtils.getIconWidget("smart_toy", size: 64, color: Colors.white),
-                          const SizedBox(height: 16),
-                          const Text(
-                            'JARVIS',
-                            style: AppTextStyles.headerTitle,
-                          ),
-                          const Text(
-                            '智能工作助手',
-                            style: AppTextStyles.headerSubtitle,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              );
+          GestureDetector(
+            onTap: () {
+              _showHeader(isManual: true);
             },
+            child: ClipRect(
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeInOut,
+                height: _isHeaderVisible ? 200 : 0,
+                child: _isHeaderVisible
+                    ? _buildCustomHeader()
+                    : const SizedBox.shrink(),
+              ),
+            ),
           ),
-          // 插件加载状态指示器
-          _buildLoadingIndicator(),
-          // 插件列表
           Expanded(
-            child: _buildPluginList(),
+            child: _buildPluginGrid(),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildLoadingIndicator() {
-    switch (_loadingNotifier.state) {
-      case PluginLoadingState.loading:
-        return Container(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
+  Widget _buildCustomHeader() {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Theme.of(context).primaryColor.withOpacity(0.9),
+            Theme.of(context).primaryColor.withOpacity(0.7),
+          ],
+        ),
+      ),
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 8.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.cyan.shade700),
-                ),
+              // 头部标题行
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Flexible(
+                    child: Text(
+                      'JARVIS',
+                      style: AppTextStyles.pageTitle.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  // 使用统一的getActions方法
+                  ...getActions(),
+                ],
               ),
-              const SizedBox(width: 12),
-              const Text('正在加载插件...', style: AppTextStyles.bodySecondary),
-            ],
-          ),
-        );
-      case PluginLoadingState.error:
-        return Container(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              IconUtils.getIconWidget("error_outline", color: Colors.red.shade600, size: 16),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  '插件加载失败: ${_loadingNotifier.errorMessage}',
-                  style: AppTextStyles.error,
-                ),
-              ),
-              TextButton(
-                onPressed: () => _loadingNotifier.reloadPlugins(),
-                child: const Text('重试', style: AppTextStyles.buttonNormal),
-              ),
-            ],
-          ),
-        );
-      case PluginLoadingState.loaded:
-        return Container(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              IconUtils.getIconWidget("check_circle", color: Colors.green.shade600, size: 16),
-              const SizedBox(width: 8),
+              const SizedBox(height: 8),
+              // 副标题
               Text(
-                '插件加载完成 (${_loadingNotifier.pluginManager.enabledPlugins.length}个)',
-                style: AppTextStyles.success,
+                '智能助手 - 让工作更高效',
+                style: AppTextStyles.cardTitle.copyWith(
+                  color: Colors.white70,
+                ),
+                overflow: TextOverflow.ellipsis,
               ),
             ],
           ),
-        );
-    }
+        ),
+      ),
+    );
   }
 
-  Widget _buildPluginList() {
-    final enabledPlugins = _loadingNotifier.pluginManager.enabledPlugins;
+  Widget _buildPluginGrid() {
+    final pluginLoadingData = ref.watch(pluginLoadingProvider);
     
-    if (_loadingNotifier.state == PluginLoadingState.loading || enabledPlugins.isEmpty) {
-      return Center(
+    if (pluginLoadingData.isLoading) {
+      return const Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            IconUtils.getIconWidget('extension_off', size: 64, color: Colors.grey.shade400),
-            const SizedBox(height: 16),
-            Text(
-              _loadingNotifier.state == PluginLoadingState.loading 
-                ? '正在加载插件...' 
-                : '插件列表为空，请前往添加插件',
-              style: AppTextStyles.bodySecondary,
-            ),
-            const SizedBox(height: 16),
-            if (_loadingNotifier.state != PluginLoadingState.loading)
-              ElevatedButton.icon(
-                onPressed: () => _navigateToPluginManagement(),
-                icon: IconUtils.getIconWidget('add'),
-                label: const Text('添加插件', style: AppTextStyles.buttonNormal),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.cyan.shade700,
-                  foregroundColor: Colors.white,
-                ),
-              ),
+            CircularProgressIndicator(),
+            SizedBox(height: 16),
+            Text("正在加载插件..."),
           ],
         ),
       );
     }
-  
-    // 有插件时显示插件网格
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: GridView.builder(
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 3,
-          crossAxisSpacing: 16,
-          mainAxisSpacing: 16,
-          childAspectRatio: 1.2,
+
+    if (pluginLoadingData.hasError) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.error, size: 64, color: Colors.red),
+            const SizedBox(height: 16),
+            Text(
+              "加载插件失败",
+              style: AppTextStyles.cardTitle,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              pluginLoadingData.error ?? "未知错误",
+              style: AppTextStyles.bodyNormal.copyWith(color: Colors.red),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: () => ref.read(pluginLoadingProvider.notifier).reloadPlugins(),
+              child: const Text("重试"),
+            ),
+          ],
         ),
-        itemCount: enabledPlugins.length,
-        itemBuilder: (context, index) {
-          final plugin = enabledPlugins[index];
-          return _buildPluginCard(plugin);
-        },
+      );
+    }
+
+    // 获取启用的插件列表
+    final enabledPlugins = pluginLoadingData.pluginManager.enabledPlugins;
+
+    if (enabledPlugins.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.extension_off, size: 64, color: Colors.grey),
+            const SizedBox(height: 16),
+            const Text(
+              "暂无可用插件",
+              style: AppTextStyles.cardTitle,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              "请在插件管理中添加插件",
+              style: AppTextStyles.bodyNormal.copyWith(color: Colors.grey),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return GridView.builder(
+      padding: AppLayoutConfig.pagePadding,
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 4,
+        crossAxisSpacing: 16,
+        mainAxisSpacing: 16,
+        childAspectRatio: 1.2,
       ),
+      itemCount: enabledPlugins.length,
+      itemBuilder: (context, index) {
+        final plugin = enabledPlugins[index];
+        return _buildPluginCard(plugin);
+      },
     );
   }
 
   Widget _buildPluginCard(JarvisPlugin plugin) {
-    return Card(
-      elevation: 2,
-      child: InkWell(
-        onTap: () => _openPlugin(plugin),
-        borderRadius: BorderRadius.circular(8),
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              IconUtils.getIconWidget(plugin.config.icon, size: 48, color: Colors.cyan.shade700),
-              const SizedBox(height: 12),
-              Text(
-                plugin.config.name,
-                style: AppTextStyles.cardTitle,
-                textAlign: TextAlign.center,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
+    return AppSectionCard(
+        hasShadow: true,
+        singleChild: true,
+        children: [
+            InkWell(
+              onTap: () => _openPlugin(plugin),
+              borderRadius: AppLayoutConfig.borderRadiusLarge,
+              child: Padding(
+                padding: AppLayoutConfig.cardPaddingMedium,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      IconUtils.getIcon(plugin.config.icon),
+                      size: 32,
+                      color: Theme.of(context).primaryColor,
+                    ),
+                    const SizedBox(height: 8),
+                    Flexible(
+                      child: Text(
+                        plugin.config.name,
+                        style: AppTextStyles.cardTitle,
+                        textAlign: TextAlign.center,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(height: 4),
-              Text(
-                plugin.config.description,
-                style: AppTextStyles.cardSubtitle,
-                textAlign: TextAlign.center,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+            ),
+        ],
+      );
   }
 
   void _openPlugin(JarvisPlugin plugin) {
-    Navigator.push(
-      context,
+    AppLogger.info('Opening plugin: ${plugin.config.name}');
+    
+    // 跳转到插件的主界面
+    Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => plugin.getMainWidget(),
       ),
@@ -352,13 +436,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Future<void> _navigateToPluginManagement() async {
-    await Navigator.push(
-      context,
+    final result = await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => const PluginManagementScreen(),
       ),
     );
-    // 插件管理页面返回后刷新状态
-    setState(() {});
+    
+    if (result == true) {
+      // 插件配置有变化，重新加载
+      ref.read(pluginLoadingProvider.notifier).reloadPlugins();
+    }
   }
 }

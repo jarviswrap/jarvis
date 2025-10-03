@@ -7,9 +7,10 @@ environment:
   flutter: ">=3.10.0"
 
 dependencies:
+  # 只保留 talker_flutter，移除 logger 和 flutter_logs
+  talker_flutter: ^4.0.0
   flutter:
     sdk: flutter
-  logger: ^2.0.2+1
   shared_preferences: ^2.2.2
 
   # UI Components 

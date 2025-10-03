@@ -1,4 +1,5 @@
 import 'package:uuid/uuid.dart';
+import 'dart:convert';
 
 /// 参数类型枚举
 enum ParameterType {
@@ -41,6 +42,23 @@ class ParameterConfig {
   });
 
   factory ParameterConfig.fromMap(Map<String, dynamic> map) {
+    String? valueRegex;
+    
+    // 优先处理Base64编码的正则表达式
+    if (map['valueRegex_base64'] != null) {
+      try {
+        final decodedBytes = base64Decode(map['valueRegex_base64']);
+        valueRegex = utf8.decode(decodedBytes);
+      } catch (e) {
+        // 如果Base64解码失败，记录错误但继续处理
+        print('Warning: Failed to decode valueRegex_base64: $e');
+        valueRegex = map['valueRegex']; // 回退到原始字段
+      }
+    } else {
+      // 使用原始的valueRegex字段
+      valueRegex = map['valueRegex'];
+    }
+    
     return ParameterConfig(
       name: map['name'] ?? '',
       type: ParameterType.values.firstWhere(
@@ -48,7 +66,7 @@ class ParameterConfig {
         orElse: () => ParameterType.text,
       ),
       value: map['value'],
-      valueRegex: map['valueRegex'],
+      valueRegex: valueRegex,
       required: map['required'] is String 
           ? map['required'] == 'true' 
           : (map['required'] ?? false),  // 支持字符串和布尔值
@@ -57,14 +75,27 @@ class ParameterConfig {
   }
 
   Map<String, dynamic> toMap() {
-    return {
+    final map = <String, dynamic>{
       'name': name,
       'type': type.name,
       if (value != null) 'value': value,
-      if (valueRegex != null) 'valueRegex': valueRegex,
       'required': required,
       if (description != null) 'description': description,
     };
+    
+    // 如果有正则表达式，同时保存原始和Base64编码版本
+    if (valueRegex != null && valueRegex!.isNotEmpty) {
+      map['valueRegex'] = valueRegex;
+      try {
+        final encodedRegex = base64Encode(utf8.encode(valueRegex!));
+        map['valueRegex_base64'] = encodedRegex;
+      } catch (e) {
+        // 如果编码失败，只保存原始版本
+        print('Warning: Failed to encode valueRegex to base64: $e');
+      }
+    }
+    
+    return map;
   }
 
   ParameterConfig copyWith({
@@ -82,6 +113,38 @@ class ParameterConfig {
       valueRegex: valueRegex ?? this.valueRegex,
       required: required ?? this.required,
       description: description ?? this.description,
+    );
+  }
+}
+
+enum DisplayType {
+  normal,
+  compare,
+}
+
+class DisplayConfig {
+  final DisplayType type;
+  final String? param;
+
+  const DisplayConfig({
+    required this.type,
+    this.param,
+  });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'type': type.name,
+      if (param != null) 'param': param,
+    };
+  }
+
+  factory DisplayConfig.fromMap(Map<String, dynamic> map) {
+    return DisplayConfig(
+      type: DisplayType.values.firstWhere(
+        (e) => e.name == map['type'],
+        orElse: () => DisplayType.normal,
+      ),
+      param: map['param'],
     );
   }
 }
@@ -112,7 +175,8 @@ class CommandConfig {
         (e) => e.name == map['type'],
         orElse: () => CommandType.system,
       ),
-      executableDir: map['executable_path'],
+      // 修复字段映射：应该是executable_dir而不是executable_path
+      executableDir: map['executable_dir'] ?? map['executable_path'],
       parameters: parameters,
     );
   }
@@ -121,7 +185,8 @@ class CommandConfig {
     return {
       'executable_file': executableFile,
       'type': type.name,  // 存储枚举的名称
-      if (executableDir != null) 'executable_path': executableDir,
+      // 统一使用executable_dir
+      if (executableDir != null) 'executable_dir': executableDir,
       'parameters': parameters.map((p) => p.toMap()).toList(),
     };
   }
@@ -135,6 +200,7 @@ class PluginConfig {
   final PluginType type;
   final String icon;
   final bool enabled;
+  final DisplayConfig? displayConfig;
   final CommandConfig? commandConfig;
 
   const PluginConfig({
@@ -144,6 +210,7 @@ class PluginConfig {
     required this.type,
     required this.icon,
     required this.enabled,
+    this.displayConfig,
     this.commandConfig,
   });
 
@@ -161,6 +228,9 @@ class PluginConfig {
       commandConfig: map['command_config'] != null
           ? CommandConfig.fromMap(Map<String, dynamic>.from(map['command_config']))
           : null,
+      displayConfig: map['display_config'] != null
+          ? DisplayConfig.fromMap(Map<String, dynamic>.from(map['display_config']))
+          : null,
     );
   }
 
@@ -175,6 +245,7 @@ class PluginConfig {
       'icon': icon,
       'enabled': enabled,
       'command_config': commandConfigMap,
+      'display_config': displayConfig?.toMap(),
     };
   }
 

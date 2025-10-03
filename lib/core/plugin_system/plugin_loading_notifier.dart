@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'plugin_manager.dart';
 
 /// 插件加载状态
@@ -8,64 +9,95 @@ enum PluginLoadingState {
   error,      // 加载失败
 }
 
-/// 插件加载状态通知器
-class PluginLoadingNotifier extends ChangeNotifier {
-  static final PluginLoadingNotifier _instance = PluginLoadingNotifier._internal();
-  factory PluginLoadingNotifier() => _instance;
-  PluginLoadingNotifier._internal();
+/// 插件加载状态数据类
+@immutable
+class PluginLoadingData {
+  final PluginLoadingState state;
+  final String? errorMessage;
+  final PluginManager pluginManager;
 
-  PluginLoadingState _state = PluginLoadingState.loading;
-  String? _errorMessage;
-  final PluginManager _pluginManager = PluginManager();
+  const PluginLoadingData({
+    required this.state,
+    this.errorMessage,
+    required this.pluginManager,
+  });
 
-  PluginLoadingState get state => _state;
-  String? get errorMessage => _errorMessage;
-  PluginManager get pluginManager => _pluginManager;
+  PluginLoadingData copyWith({
+    PluginLoadingState? state,
+    String? errorMessage,
+    PluginManager? pluginManager,
+  }) {
+    return PluginLoadingData(
+      state: state ?? this.state,
+      errorMessage: errorMessage ?? this.errorMessage,
+      pluginManager: pluginManager ?? this.pluginManager,
+    );
+  }
+
+  // 便捷的getter方法
+  bool get isLoading => state == PluginLoadingState.loading;
+  bool get isLoaded => state == PluginLoadingState.loaded;
+  bool get hasError => state == PluginLoadingState.error;
+  String? get error => errorMessage;
+}
+
+/// 插件加载状态通知器 (Riverpod版本)
+class PluginLoadingNotifier extends StateNotifier<PluginLoadingData> {
+  PluginLoadingNotifier() : super(PluginLoadingData(
+    state: PluginLoadingState.loading,
+    pluginManager: PluginManager(),
+  ));
 
   /// 开始加载插件
   Future<void> loadPlugins() async {
-    _state = PluginLoadingState.loading;
-    _errorMessage = null;
-    notifyListeners();
+    state = state.copyWith(
+      state: PluginLoadingState.loading,
+      errorMessage: null,
+    );
   
     try {
-      // 临时清除缓存以强制重新加载 YAML 配置
-      await _pluginManager.resetToDefaultConfigs();
+      // 添加5秒延时
+      // await Future.delayed(const Duration(seconds: 5));
       
-      await _pluginManager.loadPluginConfigs();
-      await _pluginManager.initializePlugins();
+      await state.pluginManager.loadPluginConfigs();
+      await state.pluginManager.initializePlugins();
       
-      _state = PluginLoadingState.loaded;
-      _errorMessage = null;
+      state = state.copyWith(
+        state: PluginLoadingState.loaded,
+        errorMessage: null,
+      );
     } catch (e) {
-      _state = PluginLoadingState.error;
-      _errorMessage = e.toString();
+      state = state.copyWith(
+        state: PluginLoadingState.error,
+        errorMessage: e.toString(),
+      );
     }
-    
-    notifyListeners();
   }
 
   /// 清除所有缓存并重新加载插件
   Future<void> clearCacheAndReload() async {
-    _state = PluginLoadingState.loading;
-    _errorMessage = null;
-    notifyListeners();
+    state = state.copyWith(
+      state: PluginLoadingState.loading,
+      errorMessage: null,
+    );
 
     try {
       // 清除所有插件缓存
-      await _pluginManager.resetToDefaultConfigs();
+      await state.pluginManager.resetToDefaultConfigs();
       
       // 重新初始化插件
-      await _pluginManager.initializePlugins();
+      await state.pluginManager.initializePlugins();
       
-      _state = PluginLoadingState.loaded;
-      _errorMessage = null;
+      state = state.copyWith(
+        state: PluginLoadingState.loaded,
+        errorMessage: null,
+      );
     } catch (e) {
-      _state = PluginLoadingState.error;
-      _errorMessage = e.toString();
+      state = state.copyWith(
+        state: PluginLoadingState.error,
+        errorMessage: e.toString(),
+      );
     }
-    
-    notifyListeners();
   }
 
   /// 重新加载插件（不清除缓存）
@@ -73,3 +105,8 @@ class PluginLoadingNotifier extends ChangeNotifier {
     await loadPlugins();
   }
 }
+
+/// Riverpod Provider
+final pluginLoadingProvider = StateNotifierProvider<PluginLoadingNotifier, PluginLoadingData>((ref) {
+  return PluginLoadingNotifier();
+});

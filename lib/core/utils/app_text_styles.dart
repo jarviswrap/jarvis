@@ -91,7 +91,7 @@ class AppTextStyles {
 
   // ========== 标题样式 ==========
   /// 页面主标题
-  static const TextStyle titlePage = TextStyle(
+  static const TextStyle pageTitle = TextStyle(
     fontSize: fontSizeXLarge,
     fontWeight: FontWeight.bold,
     color: primaryTextColor,
@@ -109,7 +109,7 @@ class AppTextStyles {
   /// 小节标题
   static const TextStyle sectionTitle = TextStyle(
     fontSize: fontSizeMedium,
-    fontWeight: FontWeight.w500,
+    fontWeight: FontWeight.w600,
     color: primaryTextColor,
     fontFamily: 'JetBrainsMono',
   );
@@ -306,7 +306,44 @@ class AppTextStyles {
     color: Colors.white,
     fontSize: 18,
     fontWeight: FontWeight.w600,
+    fontFamily: 'JetBrainsMono',
   );
+
+  // 新增AppBar主题配置方法
+  static AppBarTheme getAppBarTheme(BuildContext context) {
+    return AppBarTheme(
+      backgroundColor: Theme.of(context).colorScheme.primary,
+      foregroundColor: Colors.white,
+      titleTextStyle: appBarTitle,
+      iconTheme: const IconThemeData(color: Colors.white),
+      actionsIconTheme: const IconThemeData(color: Colors.white),
+      elevation: 2,
+      shadowColor: Colors.black26,
+      centerTitle: false,
+    );
+  }
+
+  // 创建统一的AppBar构建方法
+  static AppBar buildAppBar({
+    required String title,
+    List<Widget>? actions,
+    Widget? leading,
+    bool automaticallyImplyLeading = true,
+    Color? backgroundColor,
+  }) {
+    return AppBar(
+      title: Text(title, style: appBarTitle),
+      backgroundColor: backgroundColor ?? Colors.cyan.shade700,
+      foregroundColor: Colors.white,
+      actions: actions,
+      leading: leading,
+      automaticallyImplyLeading: automaticallyImplyLeading,
+      elevation: 2,
+      shadowColor: Colors.black26,
+      iconTheme: const IconThemeData(color: Colors.white),
+      actionsIconTheme: const IconThemeData(color: Colors.white),
+    );
+  }
 
   static const TextStyle headerTitle = TextStyle(
     fontSize: 32,

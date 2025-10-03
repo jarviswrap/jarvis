@@ -362,4 +362,339 @@ class PluginManager {
       AppLogger.error('Error resetting to default configs', e, stackTrace);
     }
   }
+
+  /// 导出插件配置为YAML字符串
+  String exportPluginConfigAsYaml(String pluginId) {
+    final config = _pluginConfigs[pluginId];
+    if (config == null) {
+      throw Exception('Plugin not found: $pluginId');
+    }
+    
+    return _convertPluginConfigToYaml(config);
+  }
+
+  /// 导出所有插件配置为YAML字符串
+  String exportAllPluginConfigsAsYaml() {
+    final allConfigs = _pluginConfigs.values.toList();
+    return _convertPluginConfigsToYaml(allConfigs);
+  }
+
+  /// 将多个插件配置转换为YAML格式
+  String _convertPluginConfigsToYaml(List<PluginConfig> configs) {
+    final buffer = StringBuffer();
+    
+    buffer.writeln('plugins:');
+    
+    for (int i = 0; i < configs.length; i++) {
+      final config = configs[i];
+      
+      buffer.writeln('  - name: "${config.name}"');
+      buffer.writeln('    description: "${config.description}"');
+      buffer.writeln('    type: "${config.type.name}"');
+      buffer.writeln('    icon: "${config.icon}"');
+      buffer.writeln('    enabled: ${config.enabled}');
+      
+      // 添加 DisplayConfig 的导出
+      if (config.displayConfig != null) {
+        final displayConfig = config.displayConfig!;
+        buffer.writeln('    display_config:');
+        buffer.writeln('      type: "${displayConfig.type.name}"');
+        
+        if (displayConfig.param?.isNotEmpty == true) {
+          buffer.writeln('      param: "${displayConfig.param}"');
+        }
+      }
+      
+      if (config.commandConfig != null) {
+        final cmdConfig = config.commandConfig!;
+        buffer.writeln('    command_config:');
+        buffer.writeln('      executable_file: "${cmdConfig.executableFile}"');
+        buffer.writeln('      type: "${cmdConfig.type.name}"');
+        
+        if (cmdConfig.executableDir?.isNotEmpty == true) {
+          buffer.writeln('      executable_dir: "${cmdConfig.executableDir}"');
+        }
+        
+        if (cmdConfig.parameters.isNotEmpty) {
+          buffer.writeln('      parameters:');
+          for (final param in cmdConfig.parameters) {
+            buffer.writeln('        - name: "${param.name}"');
+            buffer.writeln('          type: "${param.type.name}"');
+            buffer.writeln('          required: ${param.required}');
+            
+            if (param.description?.isNotEmpty == true) {
+              buffer.writeln('          description: "${param.description}"');
+            }
+            
+            if (param.value?.isNotEmpty == true) {
+              buffer.writeln('          value: "${param.value}"');
+            }
+            
+            if (param.valueRegex?.isNotEmpty == true) {
+              // 对正则表达式进行Base64编码以避免YAML解析问题
+              final encodedRegex = base64Encode(utf8.encode(param.valueRegex!));
+              buffer.writeln('          valueRegex_base64: "$encodedRegex"');
+            }
+          }
+        }
+      }
+      
+      // 如果不是最后一个插件，添加空行分隔
+      if (i < configs.length - 1) {
+        buffer.writeln();
+      }
+    }
+    
+    return buffer.toString();
+  }
+
+  /// 将单个插件配置转换为YAML格式
+  String _convertPluginConfigToYaml(PluginConfig config) {
+    final buffer = StringBuffer();
+    
+    buffer.writeln('plugins:');
+    // 移除 id 字段，导出时不应包含系统特定的标识符
+    // buffer.writeln('  - id: "${config.id}"');
+    buffer.writeln('  - name: "${config.name}"');
+    buffer.writeln('    description: "${config.description}"');
+    buffer.writeln('    type: "${config.type.name}"');
+    buffer.writeln('    icon: "${config.icon}"');
+    buffer.writeln('    enabled: ${config.enabled}');
+    
+    // 添加 DisplayConfig 的导出
+    if (config.displayConfig != null) {
+      final displayConfig = config.displayConfig!;
+      buffer.writeln('    display_config:');
+      buffer.writeln('      type: "${displayConfig.type.name}"');
+      
+      if (displayConfig.param?.isNotEmpty == true) {
+        buffer.writeln('      param: "${displayConfig.param}"');
+      }
+    }
+    
+    if (config.commandConfig != null) {
+      final cmdConfig = config.commandConfig!;
+      buffer.writeln('    command_config:');
+      buffer.writeln('      executable_file: "${cmdConfig.executableFile}"');
+      buffer.writeln('      type: "${cmdConfig.type.name}"');
+      
+      if (cmdConfig.executableDir?.isNotEmpty == true) {
+        buffer.writeln('      executable_dir: "${cmdConfig.executableDir}"');
+      }
+      
+      if (cmdConfig.parameters.isNotEmpty) {
+        buffer.writeln('      parameters:');
+        for (final param in cmdConfig.parameters) {
+          buffer.writeln('        - name: "${param.name}"');
+          buffer.writeln('          type: "${param.type.name}"');
+          buffer.writeln('          required: ${param.required}');
+          
+          if (param.description?.isNotEmpty == true) {
+            buffer.writeln('          description: "${param.description}"');
+          }
+          
+          if (param.value?.isNotEmpty == true) {
+            buffer.writeln('          value: "${param.value}"');
+          }
+          
+          if (param.valueRegex?.isNotEmpty == true) {
+            // 对正则表达式进行Base64编码以避免YAML解析问题
+            final encodedRegex = base64Encode(utf8.encode(param.valueRegex!));
+            buffer.writeln('          valueRegex_base64: "$encodedRegex"');
+          }
+        }
+      }
+    }
+    
+    return buffer.toString();
+  }
+
+    /// 从JSON字符串导入插件配置
+  Future<void> importPluginConfig(String jsonString) async {
+    try {
+      final Map<String, dynamic> configMap = jsonDecode(jsonString);
+      final config = PluginConfig.fromMap(configMap);
+      
+      // 检查是否已存在同名插件
+      final existingConfig = _pluginConfigs.values
+          .where((c) => c.name == config.name && c.id != config.id)
+          .firstOrNull;
+      
+      if (existingConfig != null) {
+        throw Exception('Plugin with name "${config.name}" already exists');
+      }
+      
+      await addPlugin(config);
+      AppLogger.info('Plugin "${config.name}" imported successfully');
+    } catch (e, stackTrace) {
+      AppLogger.error('Error importing plugin config', e, stackTrace);
+      rethrow;
+    }
+  }
+
+  /// 从YAML字符串导入插件配置
+  Future<void> importPluginConfigFromYaml(String yamlString) async {
+    try {
+      // 预处理YAML字符串，处理特殊字符
+      String processedYamlString = _preprocessYamlString(yamlString);
+      
+      final dynamic yamlData = loadYaml(processedYamlString);
+      
+      if (yamlData is Map && yamlData['plugins'] != null) {
+        // 多个插件配置
+        final List<dynamic> pluginsData = yamlData['plugins'];
+        int importedCount = 0;
+        
+        for (final pluginData in pluginsData) {
+          try {
+            final config = PluginConfig.fromMap(Map<String, dynamic>.from(pluginData));
+            
+            // 检查是否已存在同名插件
+            final existingConfig = _pluginConfigs.values
+                .where((c) => c.name == config.name && c.id != config.id)
+                .firstOrNull;
+            
+            if (existingConfig == null) {
+              await addPlugin(config);
+              importedCount++;
+              AppLogger.info('Plugin "${config.name}" imported successfully from YAML');
+            } else {
+              AppLogger.warning('Plugin "${config.name}" already exists, skipping');
+            }
+          } catch (e) {
+            AppLogger.error('Error importing plugin from YAML', e);
+          }
+        }
+        
+        if (importedCount == 0) {
+          throw Exception('No plugins were imported. All plugins may already exist.');
+        }
+      } else if (yamlData is Map) {
+        // 单个插件配置
+        final config = PluginConfig.fromMap(Map<String, dynamic>.from(yamlData));
+        
+        // 检查是否已存在同名插件
+        final existingConfig = _pluginConfigs.values
+            .where((c) => c.name == config.name && c.id != config.id)
+            .firstOrNull;
+        
+        if (existingConfig != null) {
+          throw Exception('Plugin with name "${config.name}" already exists');
+        }
+        
+        await addPlugin(config);
+        AppLogger.info('Plugin "${config.name}" imported successfully from YAML');
+      } else {
+        throw Exception('Invalid YAML format. Expected plugin configuration or plugins list.');
+      }
+    } catch (e, stackTrace) {
+      AppLogger.error('Error importing plugin config from YAML', e, stackTrace);
+      rethrow;
+    }
+  }
+
+  /// 从YAML字符串解析插件配置（不保存）
+  PluginConfig parsePluginConfigFromYaml(String yamlString) {
+    try {
+      // 预处理YAML字符串，处理特殊字符
+      String processedYamlString = _preprocessYamlString(yamlString);
+      
+      final dynamic yamlData = loadYaml(processedYamlString);
+      
+      if (yamlData is Map && yamlData['plugins'] != null) {
+        // 多个插件配置，返回第一个
+        final List<dynamic> pluginsData = yamlData['plugins'];
+        if (pluginsData.isNotEmpty) {
+          return PluginConfig.fromMap(Map<String, dynamic>.from(pluginsData.first));
+        } else {
+          throw Exception('No plugins found in YAML data');
+        }
+      } else if (yamlData is Map) {
+        // 单个插件配置（直接是插件对象，没有plugins根节点）
+        return PluginConfig.fromMap(Map<String, dynamic>.from(yamlData));
+      } else {
+        throw Exception('Invalid YAML format. Expected plugin configuration or plugins list.');
+      }
+    } catch (e, stackTrace) {
+      AppLogger.error('Error parsing plugin config from YAML', e, stackTrace);
+      rethrow;
+    }
+  }
+
+  /// 从JSON字符串解析插件配置（不保存）
+  PluginConfig parsePluginConfigFromJson(String jsonString) {
+    try {
+      final Map<String, dynamic> configMap = jsonDecode(jsonString);
+      return PluginConfig.fromMap(configMap);
+    } catch (e, stackTrace) {
+      AppLogger.error('Error parsing plugin config from JSON', e, stackTrace);
+      rethrow;
+    }
+  }
+
+  /// 预处理YAML字符串，处理特殊字符和转义
+  String _preprocessYamlString(String yamlString) {
+    final lines = yamlString.split('\n');
+    final processedLines = <String>[];
+    
+    for (String line in lines) {
+      String processedLine = line;
+      
+      // 跳过注释行
+      if (line.trim().startsWith('#')) {
+        processedLines.add(line);
+        continue;
+      }
+      
+      // 检查是否包含冒号（键值对）
+      if (line.trim().contains(':')) {
+        final colonIndex = line.indexOf(':');
+        if (colonIndex != -1) {
+          final keyPart = line.substring(0, colonIndex + 1);
+          final valuePart = line.substring(colonIndex + 1).trim();
+          final indent = line.substring(0, line.indexOf(line.trim()));
+          
+          // Base64编码的字段不需要特殊处理
+          if (keyPart.trim().endsWith('valueRegex_base64:')) {
+            processedLines.add(line);
+            continue;
+          }
+          
+          // 需要特殊处理的字段（排除Base64字段）
+          final specialFields = [
+            'valueRegex:', 'value:', 'description:', 
+            'executable_file:', 'executable_dir:', 'executable_path:'
+          ];
+          
+          final isSpecialField = specialFields.any((field) => 
+            keyPart.trim().endsWith(field));
+          
+          if (isSpecialField && valuePart.isNotEmpty) {
+            // 检查值是否已经被正确引用
+            if (valuePart.startsWith('"') && valuePart.endsWith('"')) {
+              // 已经用双引号包围，检查内部是否有未转义的双引号
+              final innerValue = valuePart.substring(1, valuePart.length - 1);
+              if (innerValue.contains('"') && !innerValue.contains('\\"')) {
+                // 有未转义的双引号，重新用单引号包围
+                processedLine = '$indent$keyPart \'$innerValue\'';
+              } else {
+                // 保持原样
+                processedLine = line;
+              }
+            } else if (valuePart.startsWith("'") && valuePart.endsWith("'")) {
+              // 已经用单引号包围，保持原样
+              processedLine = line;
+            } else if (valuePart != '""' && valuePart != "''" && valuePart.isNotEmpty) {
+              // 没有被引号包围且不为空，用单引号包围
+              processedLine = '$indent$keyPart \'$valuePart\'';
+            }
+          }
+        }
+      }
+      
+      processedLines.add(processedLine);
+    }
+    
+    return processedLines.join('\n');
+  }
 }

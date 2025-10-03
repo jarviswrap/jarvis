@@ -4,7 +4,12 @@ import '../core/plugin_system/shell_plugin.dart';
 import '../core/plugin_system/plugin_models.dart';
 import '../core/widgets/file_picker_dialog.dart';
 import '../core/utils/app_text_styles.dart';
+import '../core/utils/app_layout_config.dart';
 import '../core/widgets/regex_picker_dialog.dart';
+import '../core/plugin_system/plugin_manager.dart';
+import '../core/widgets/plugin_export_dialog.dart';
+import '../core/widgets/collapsible_section.dart';
+import '../core/widgets/app_section_card.dart';
 
 class ShellPluginScreen extends StatefulWidget {
   final ShellPlugin plugin;
@@ -22,6 +27,13 @@ class _ShellPluginScreenState extends State<ShellPluginScreen> {
   final Map<String, bool> _regexValidationStates = {}; // 添加正则表达式验证状态管理
   final Map<String, String> _originalTexts = {}; // 添加存储原始文本的Map
   final _formKey = GlobalKey<FormState>();
+  bool _isParameterSectionExpanded = true; // 添加参数区域展开状态控制
+  
+  // 参数概要文本
+  String get _parameterSummaryText {
+    final parameters = widget.plugin.config.commandConfig?.parameters ?? [];
+    return parameters.map((param) => param.name).join(' ');
+  }
 
   PluginExecutionResult? _lastResult;
 
@@ -54,15 +66,15 @@ class _ShellPluginScreenState extends State<ShellPluginScreen> {
     final parameters = widget.plugin.config.commandConfig?.parameters ?? [];
     for (final param in parameters) {
       if (param.type == ParameterType.none || param.type == ParameterType.boolean) {
-        _parameterValues[param.name] = param.value == 'true' || param.value == '1';
+        _parameterValues[param.name] = (param.value == 'true' || param.value == '1');
       } else if (param.type == ParameterType.textAreaRegex) {
         // 为textAreaRegix类型创建两个控制器
         final valueController = TextEditingController(text: param.value ?? '');
-        final regexController = TextEditingController(text: '');
+        final regexController = TextEditingController(text: param.valueRegex ?? '');
         _controllers[param.name] = valueController;
         _controllers['${param.name}_regex'] = regexController;
         _parameterValues[param.name] = param.value ?? '';
-        _parameterValues['${param.name}_regex'] = '';
+        _parameterValues['${param.name}_regex'] = param.valueRegex?? '';
       } else {
         final controller = TextEditingController(text: param.value ?? '');
         _controllers[param.name] = controller;
@@ -73,117 +85,112 @@ class _ShellPluginScreenState extends State<ShellPluginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final commandConfig = widget.plugin.config.commandConfig;
+    final config = widget.plugin.config;
+    final commandConfig = config.commandConfig;
+    final displayConfig = config.displayConfig;
     
     return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.plugin.config.name, style: AppTextStyles.appBarTitle),
-        backgroundColor: Colors.cyan.shade700,
+      appBar: AppTextStyles.buildAppBar(
+        title: config.name,
         actions: [
           IconButton(
-            icon: const Icon(Icons.info_outline),
             onPressed: _showPluginInfo,
+            icon: const Icon(Icons.info_outline),
+            tooltip: '插件信息',
+          ),
+          IconButton(
+            onPressed: _exportPlugin,
+            icon: const Icon(Icons.file_download),
+            tooltip: '导出插件',
           ),
         ],
       ),
-      body: Column(
-        children: [
-          _buildCommandPreview(),
-          Expanded(
-            child: Form(
-              key: _formKey,
-              child: ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  if (commandConfig?.parameters.isNotEmpty == true) ...[
-                    const Text('参数配置', style: AppTextStyles.sectionTitle),
-                    const SizedBox(height: 12),
-                    ...commandConfig!.parameters.map(_buildParameterWidget),
-                    const SizedBox(height: 20),
-                  ],
-                ],
-              ),
-            ),
-          ),
-          if (_lastResult != null) _buildResultArea(),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCommandPreview() {
-    final command = _buildFullCommand();
-    
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.all(6),
-      padding: const EdgeInsets.all(6),
-      decoration: BoxDecoration(
-        color: Colors.grey.shade50,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.grey.shade200),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.terminal, size: 20, color: Colors.cyan.shade700),
-              const SizedBox(width: 8),
-              const Text('命令预览', style: AppTextStyles.sectionTitle),
-              const Spacer(),
-              IconButton(
-                icon: const Icon(Icons.copy, size: 18),
-                onPressed: () => _copyCommand(command),
-                tooltip: '复制命令',
-                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                padding: const EdgeInsets.all(4),
-              ),
-              const SizedBox(width: 4),
-              IconButton(
-                icon: const Icon(Icons.refresh, size: 18),
-                onPressed: _clearCommand,
-                tooltip: '清除参数',
-                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                padding: const EdgeInsets.all(4),
-              ),
-              const SizedBox(width: 4),
-              SizedBox(
-                height: 30,
-                child: ElevatedButton.icon(
+      body: Form(
+        key: _formKey,
+        child: ListView(
+          padding: AppLayoutConfig.pagePadding,
+          clipBehavior: Clip.none,
+          children: [
+            // 命令预览（使用 CollapsibleSection 替换外层 Container）
+            CollapsibleSection(
+              icon: Icons.terminal,
+              title: '命令预览',
+              iconColor: Colors.cyan.shade700,
+              collapsedSummaryText: _buildFullCommand(),
+              trailingBuilder: (expanded) => [
+                IconButton(
+                  icon: const Icon(Icons.copy, size: 20),
+                  onPressed: () => _copyCommand(_buildFullCommand()),
+                  tooltip: '复制命令',
+                  constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
+                  padding: const EdgeInsets.all(4),
+                ),
+                const SizedBox(width: 4),
+                IconButton(
+                  icon: const Icon(Icons.refresh, size: 22),
+                  onPressed: _clearCommand,
+                  tooltip: '清除参数',
+                  constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
+                  padding: const EdgeInsets.all(4),
+                ),
+                const SizedBox(width: 4),
+                ElevatedButton(
                   onPressed: _isExecuting ? null : _executeCommand,
-                  icon: _isExecuting 
-                      ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Icon(Icons.play_arrow, size: 16),
-                  label: Text(_isExecuting ? '执行中' : '执行', style: const TextStyle(fontSize: 12)),
                   style: _buttonStyle.copyWith(
-                    padding: const WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 8, vertical: 4)),
-                    minimumSize: const WidgetStatePropertyAll(Size(0, 32)),
+                    shape: const WidgetStatePropertyAll(CircleBorder()),
+                    padding: const WidgetStatePropertyAll(EdgeInsets.zero),
+                    fixedSize: const WidgetStatePropertyAll(Size(30, 30)),
+                    minimumSize: const WidgetStatePropertyAll(Size(30, 30)),
+                  ),
+                  child: _isExecuting
+                      ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.play_arrow, size: 22),
+                ),
+              ],
+              children: [
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.black87,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: SelectableText(
+                    _buildFullCommand().isEmpty ? '请配置参数后查看命令预览' : _buildFullCommand(),
+                    style: TextStyle(
+                      color: _buildFullCommand().isEmpty ? Colors.grey.shade400 : Colors.white,
+                      fontFamily: 'JetBrainsMono',
+                      fontSize: 12,
+                    ),
+                    maxLines: 5,
+                    minLines: 2,
                   ),
                 ),
+              ],
+            ),
+            
+            // 参数配置（可折叠）
+            if (commandConfig?.parameters.isNotEmpty == true) ...[              
+              CollapsibleSection(
+                icon: Icons.settings,
+                title: '参数配置',
+                iconColor: Colors.cyan.shade700,
+                collapsedSummaryText: _parameterSummaryText,
+                initiallyExpanded: _isParameterSectionExpanded,
+                onExpansionChanged: (expanded) {
+                  setState(() {
+                    _isParameterSectionExpanded = expanded;
+                  });
+                },
+                children: commandConfig!.parameters.map(_buildParameterWidget).toList(),
               ),
+              const SizedBox(height: 20),
             ],
-          ),
-          const SizedBox(height: 6),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: Colors.black87,
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: SelectableText(
-              command.isEmpty ? '请配置参数后查看命令预览' : command,
-              style: TextStyle(
-                color: command.isEmpty ? Colors.grey.shade400 : Colors.white,
-                fontFamily: 'JetBrainsMono',
-                fontSize: 12,
-              ),
-              maxLines: 5,
-              minLines: 2,
-            ),
-          ),
-        ],
+                  
+            // 主内容区域（普通/对比模式）
+            _buildMainContentArea(),
+          ],
+        ),
       ),
     );
   }
@@ -237,32 +244,84 @@ class _ShellPluginScreenState extends State<ShellPluginScreen> {
                 Text(config.description),
                 const SizedBox(height: 16),
               ],
-              
-              const Text(
-                '状态',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 4),
-              Row(
-                children: [
-                  Icon(
-                    config.enabled ? Icons.check_circle : Icons.cancel,
-                    color: config.enabled ? Colors.green : Colors.red,
-                    size: 16,
-                  ),
-                  const SizedBox(width: 4),
-                  Text(config.enabled ? '已启用' : '已禁用'),
-                ],
-              ),
-              
               if (commandConfig != null) ...[
-                const SizedBox(height: 16),
                 const Text(
-                  '命令配置',
+                  '命令信息',
                   style: TextStyle(fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 8),
                 _buildCommandInfoInDialog(commandConfig),
+                const SizedBox(height: 16),
+              ],
+              if (commandConfig?.parameters.isNotEmpty == true) ...[
+                const Text(
+                  '参数列表',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                ...commandConfig!.parameters.map((param) => Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade50,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: Colors.grey.shade200),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Text(
+                              param.name,
+                              style: const TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.blue.shade100,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Text(
+                                getParameterTypeLabel(param.type),
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: Colors.blue.shade700,
+                                ),
+                              ),
+                            ),
+                            if (param.required) ...[
+                              const SizedBox(width: 4),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: Colors.red.shade100,
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Text(
+                                  '必填',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: Colors.red.shade700,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                        if (param.description?.isNotEmpty == true) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            param.description!,
+                            style: const TextStyle(fontSize: 12, color: Colors.grey),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                )),
               ],
             ],
           ),
@@ -270,11 +329,39 @@ class _ShellPluginScreenState extends State<ShellPluginScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('确定'),
+            child: const Text('关闭'),
           ),
         ],
       ),
     );
+  }
+
+  /// 导出插件配置
+  void _exportPlugin() async {
+    try {
+      await PluginExportDialog.show(
+        context: context,
+        pluginConfig: widget.plugin.config,
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.error, color: Colors.white),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text('打开导出对话框失败: $e'),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
   }
 
   Widget _buildCommandInfoInDialog(CommandConfig commandConfig) {
@@ -361,39 +448,25 @@ class _ShellPluginScreenState extends State<ShellPluginScreen> {
     final isCompactInput = _isCompactInputType(param.type);
     final isRegexInput = param.type == ParameterType.textAreaRegex;
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      elevation: param.required ? 6 : 1,
-      shadowColor: param.required ? Colors.cyan.shade700 : Colors.grey.shade300,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-                children: [
-                  Text(param.name, style: _getParameterNameStyle(param.required)),
-                  const SizedBox(width: 12),
-                  if (isRegexInput)
-                    Expanded(child: _buildTextAndButton(param))
-                  else if (isCompactInput)
-                    Expanded(child: _buildParameterInput(param))
-                ],
-              ),
-            if (param.description?.isNotEmpty == true) ...[
-              const SizedBox(height: 4),
-              Text(param.description!, style: AppTextStyles.bodySecondSmall),
+      return AppSectionCard(
+        hasShadow: param.required,
+        children: [
+          Row(
+            children: [
+              Text(param.name, style: _getParameterNameStyle(param.required)),
+              const SizedBox(width: 12),
+              if (isRegexInput)
+                Expanded(child: _buildTextAndButton(param))
+              else if (isCompactInput)
+                Expanded(child: _buildParameterInput(param)),
             ],
-            if (isCompactInput == false)
-              ...[
-                const SizedBox(height: 8),
-                _buildParameterInput(param),
-              ],
+          ),
+          if (isCompactInput == false) ...[
+            const SizedBox(height: 8),
+            _buildParameterInput(param),
           ],
-        ),
-      ),
-    );
+        ],
+      );
   }
 
   // 是否紧凑输入类型
@@ -430,7 +503,7 @@ class _ShellPluginScreenState extends State<ShellPluginScreen> {
       controller: _controllers[paramKey],
       decoration: AppTextStyles.getInputDecoration(
         isRegex ? '正则表达式' : getParameterTypeLabel(param.type),
-        isRegex ? '请输入正则表达式，并选中输入框右侧按钮应用/取消' : '请输入${getParameterTypeLabel(param.type)}',
+        isRegex ? '请输入正则表达式，并选中输入框右侧按钮应用/取消' : param.description ?? '请输入${getParameterTypeLabel(param.type)}',
         onTap: isRegex ? () {
           setState(() {
             final isRegexValid = _controllers[paramKey]?.text.isNotEmpty == true;
@@ -486,8 +559,8 @@ class _ShellPluginScreenState extends State<ShellPluginScreen> {
       inputFormatters: inputFormatters,
       maxLines: maxLines,
       minLines: minLines,
-      validator: (value) => _getValidator(param, value),
-      onChanged: (value) => _parameterValues[param.name] = value,
+      validator: isRegex ? null : (value) => _getValidator(param, value),
+      onChanged: (value) => _parameterValues[paramKey] = value,
     );
   }
 
@@ -573,16 +646,17 @@ class _ShellPluginScreenState extends State<ShellPluginScreen> {
 
   Widget _buildResultArea() {
     return Container(
-      constraints: const BoxConstraints(maxHeight: 250),
       decoration: BoxDecoration(
         color: Colors.black87,
         border: Border(top: BorderSide(color: Colors.grey.shade300)),
       ),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // 固定高度的头部状态栏
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
             decoration: BoxDecoration(
               color: _lastResult!.success ? Colors.green.shade700 : Colors.red.shade700,
             ),
@@ -610,6 +684,7 @@ class _ShellPluginScreenState extends State<ShellPluginScreen> {
               ],
             ),
           ),
+          // 可滚动的内容区域
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(16),
@@ -721,6 +796,15 @@ class _ShellPluginScreenState extends State<ShellPluginScreen> {
       final command = _buildFullCommand();
       final result = await _executeShellCommand(command);
       setState(() => _lastResult = result);
+      
+      // 如果命令执行成功，保存参数值到配置中并折叠参数配置区域
+      if (result.success) {
+        await _saveParameterValues();
+        // 折叠参数配置区域
+        setState(() {
+          _isParameterSectionExpanded = false;
+        });
+      }
     } catch (e) {
       setState(() {
         _lastResult = PluginExecutionResult(
@@ -732,6 +816,71 @@ class _ShellPluginScreenState extends State<ShellPluginScreen> {
       });
     } finally {
       setState(() => _isExecuting = false);
+    }
+  }
+
+  /// 保存参数值到插件配置中
+  Future<void> _saveParameterValues() async {
+    try {
+      final commandConfig = widget.plugin.config.commandConfig;
+      if (commandConfig == null) return;
+
+      // 创建新的参数列表，更新每个参数的值
+      final updatedParameters = <ParameterConfig>[];
+      
+      for (final param in commandConfig.parameters) {
+        String? newValue;
+        
+        // 根据参数类型获取对应的值
+        if (param.type == ParameterType.none || param.type == ParameterType.boolean) {
+          final boolValue = _parameterValues[param.name] as bool? ?? false;
+          newValue = boolValue.toString();
+        } else if (param.type == ParameterType.textAreaRegex) {
+          // 对于 textAreaRegex 类型，保存主要的文本值
+          newValue = _parameterValues[param.name] as String? ?? '';
+        } else {
+          // 其他文本类型参数
+          newValue = _parameterValues[param.name] as String? ?? '';
+        }
+
+        // 创建更新后的参数配置
+        final updatedParam = ParameterConfig(
+          name: param.name,
+          type: param.type,
+          required: param.required,
+          description: param.description,
+          value: newValue, // 更新为用户输入的值
+          valueRegex: _parameterValues['${param.name}_regex'] as String?,
+        );
+        updatedParameters.add(updatedParam);
+      }
+      
+      // 创建更新后的命令配置
+      final updatedCommandConfig = CommandConfig(
+        executableFile: commandConfig.executableFile,
+        type: commandConfig.type,
+        executableDir: commandConfig.executableDir,
+        parameters: updatedParameters,
+      );
+      
+      // 创建更新后的插件配置
+      final updatedPluginConfig = widget.plugin.config.copyWith(
+        commandConfig: updatedCommandConfig,
+      );
+      
+      // 通过 PluginManager 保存配置
+      final pluginManager = PluginManager();
+      await pluginManager.updatePlugin(updatedPluginConfig);
+    } catch (e, stackTrace) {
+      // 可以选择显示错误提示给用户
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('保存参数值失败: $e'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
     }
   }
 
@@ -787,6 +936,500 @@ class _ShellPluginScreenState extends State<ShellPluginScreen> {
       ),
     );
   }
-}
 
+    // 构建主内容区域
+  Widget _buildMainContentArea() {
+    final config = widget.plugin.config;
+    final displayConfig = config.displayConfig;
+    
+    // 如果displayConfig为空或者type为normal，显示普通的执行结果区域
+    if (displayConfig == null || displayConfig.type == DisplayType.normal) {
+      return _buildNormalContentArea();
+    }
+    
+    // 如果type为compare，显示对比模式的内容区域
+    if (displayConfig.type == DisplayType.compare) {
+      return _buildCompareContentArea(displayConfig.param);
+    }
+    
+    return const SizedBox.shrink();
+  }
+  
+  // 构建普通模式的内容区域
+  Widget _buildNormalContentArea() {
+    return Container(
+      width: double.infinity,
+      margin: AppLayoutConfig.cardMargin,
+      padding: AppLayoutConfig.cardPadding,
+      decoration: BoxDecoration(
+        color: Colors.grey.shade50,
+        borderRadius: AppLayoutConfig.borderRadiusLarge,
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.play_circle_outline, size: 20, color: Colors.cyan.shade700),
+              const SizedBox(width: 8),
+              const Text('执行结果', style: AppTextStyles.sectionTitle),
+              const Spacer(),
+              ElevatedButton.icon(
+                onPressed: _executeCommand,
+                icon: const Icon(Icons.play_arrow, size: 16),
+                label: const Text('执行命令', style: AppTextStyles.buttonNormal),
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (_lastResult != null)
+            _buildResultDisplay(_lastResult!)
+          else
+            Container(
+              padding: const EdgeInsets.all(20),
+              child: const Center(
+                child: Text(
+                  '点击"执行命令"查看结果',
+                  style: AppTextStyles.bodySecondSmall,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+  
+  // 构建对比模式的内容区域
+  Widget _buildCompareContentArea(String? compareParam) {
+    if (compareParam == null || compareParam.isEmpty) {
+      return Container(
+        width: double.infinity,
+        margin: AppLayoutConfig.cardMargin,
+        padding: AppLayoutConfig.cardPadding,
+        decoration: BoxDecoration(
+          color: Colors.orange.shade50,
+          borderRadius: AppLayoutConfig.borderRadiusLarge,
+          border: Border.all(color: Colors.orange.shade200),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.warning, color: Colors.orange.shade600, size: 20),
+            const SizedBox(width: 8),
+            const Expanded(
+              child: Text(
+                '对比模式配置错误：未指定对比基础参数',
+                style: AppTextStyles.bodySecondSmall,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    
+    // 查找对比参数的配置
+    final commandConfig = widget.plugin.config.commandConfig;
+    final compareParamConfig = commandConfig?.parameters.firstWhere(
+      (param) => param.name == compareParam,
+      orElse: () => const ParameterConfig(name: '', type: ParameterType.text),
+    );
+    
+    if (compareParamConfig?.name.isEmpty == true) {
+      return Container(
+        width: double.infinity,
+        margin: AppLayoutConfig.cardMargin,
+        padding: AppLayoutConfig.cardPadding,
+        decoration: BoxDecoration(
+          color: Colors.orange.shade50,
+          borderRadius: AppLayoutConfig.borderRadiusLarge,
+          border: Border.all(color: Colors.orange.shade200),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.warning, color: Colors.orange.shade600, size: 20),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                '对比模式配置错误：找不到参数 "$compareParam"',
+                style: AppTextStyles.bodySecondSmall,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    
+    return Container(
+      width: double.infinity,
+      margin: AppLayoutConfig.cardMargin,
+      padding: AppLayoutConfig.cardPadding,
+      decoration: BoxDecoration(
+        color: Colors.grey.shade50,
+        borderRadius: AppLayoutConfig.borderRadiusLarge,
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.compare_arrows, size: 20, color: Colors.cyan.shade700),
+              const SizedBox(width: 8),
+              const Text('对比模式', style: AppTextStyles.sectionTitle),
+              const Spacer(),
+              ElevatedButton.icon(
+                onPressed: _executeCompareCommand,
+                icon: const Icon(Icons.play_arrow, size: 16),
+                label: const Text('执行对比', style: AppTextStyles.buttonNormal),
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          
+          // 左右分栏布局
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 左侧：对比参数输入
+              Expanded(
+                flex: 1,
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: Colors.grey.shade300),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '对比参数: ${compareParamConfig!.name}',
+                        style: AppTextStyles.bodySecondary.copyWith(fontWeight: FontWeight.w600),
+                      ),
+                      if (compareParamConfig.description?.isNotEmpty == true) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          compareParamConfig.description!,
+                          style: AppTextStyles.bodySecondXSmall,
+                        ),
+                      ],
+                      const SizedBox(height: 8),
+                      _buildCompareParameterInput(compareParamConfig),
+                    ],
+                  ),
+                ),
+              ),
+              
+              const SizedBox(width: 16),
+              
+              // 右侧：执行结果
+              Expanded(
+                flex: 2,
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: Colors.grey.shade300),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        '执行结果',
+                        style: AppTextStyles.bodySecondary,
+                      ),
+                      const SizedBox(height: 8),
+                      if (_lastResult != null)
+                        _buildResultDisplay(_lastResult!)
+                      else
+                        Container(
+                          padding: const EdgeInsets.all(20),
+                          child: const Center(
+                            child: Text(
+                              '点击"执行对比"查看结果',
+                              style: AppTextStyles.bodySecondSmall,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+  
+  // 构建对比参数输入组件
+  Widget _buildCompareParameterInput(ParameterConfig paramConfig) {
+    // 获取当前参数值
+    final currentValue = _parameterValues[paramConfig.name] ?? paramConfig.value ?? '';
+    
+    switch (paramConfig.type) {
+      case ParameterType.text:
+        return TextFormField(
+          initialValue: currentValue,
+          decoration: AppTextStyles.getInputDecoration(
+            paramConfig.name,
+            '请输入${paramConfig.name}的值',
+          ),
+          onChanged: (value) {
+            setState(() {
+              _parameterValues[paramConfig.name] = value;
+            });
+          },
+        );
+        
+      case ParameterType.textArea:
+      case ParameterType.textAreaRegex:
+        return TextFormField(
+          initialValue: currentValue,
+          decoration: AppTextStyles.getInputDecoration(
+            paramConfig.name,
+            '请输入${paramConfig.name}的值',
+          ),
+          maxLines: 3,
+          onChanged: (value) {
+            setState(() {
+              _parameterValues[paramConfig.name] = value;
+            });
+          },
+        );
+        
+      case ParameterType.number:
+        return TextFormField(
+          initialValue: currentValue,
+          decoration: AppTextStyles.getInputDecoration(
+            paramConfig.name,
+            '请输入数字',
+          ),
+          keyboardType: TextInputType.number,
+          onChanged: (value) {
+            setState(() {
+              _parameterValues[paramConfig.name] = value;
+            });
+          },
+        );
+        
+      case ParameterType.filePath:
+        return Row(
+          children: [
+            Expanded(
+              child: TextFormField(
+                initialValue: currentValue,
+                decoration: AppTextStyles.getInputDecoration(
+                  paramConfig.name,
+                  '请选择文件',
+                ),
+                readOnly: true,
+              ),
+            ),
+            const SizedBox(width: 8),
+            ElevatedButton.icon(
+              onPressed: () => _selectFile(paramConfig),
+              icon: const Icon(Icons.file_open, size: 16),
+              label: const Text('选择', style: AppTextStyles.buttonNormal),
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              ),
+            ),
+          ],
+        );
+        
+      case ParameterType.folderPath:
+        return Row(
+          children: [
+            Expanded(
+              child: TextFormField(
+                initialValue: currentValue,
+                decoration: AppTextStyles.getInputDecoration(
+                  paramConfig.name,
+                  '请选择目录',
+                ),
+                readOnly: true,
+              ),
+            ),
+            const SizedBox(width: 8),
+            ElevatedButton.icon(
+              onPressed: () => _selectFolder(paramConfig),
+              icon: const Icon(Icons.folder_open, size: 16),
+              label: const Text('选择', style: AppTextStyles.buttonNormal),
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              ),
+            ),
+          ],
+        );
+        
+      default:
+        return TextFormField(
+          initialValue: currentValue,
+          decoration: AppTextStyles.getInputDecoration(
+            paramConfig.name,
+            '请输入${paramConfig.name}的值',
+          ),
+          onChanged: (value) {
+            setState(() {
+              _parameterValues[paramConfig.name] = value;
+            });
+          },
+        );
+    }
+  }
+  
+  // 构建结果显示组件
+  Widget _buildResultDisplay(PluginExecutionResult result) {
+    return Container(
+      constraints: const BoxConstraints(minHeight: 100, maxHeight: 300),
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (result.output.isNotEmpty) ...[
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.green.shade50,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: Colors.green.shade200),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.check_circle, color: Colors.green.shade600, size: 16),
+                        const SizedBox(width: 4),
+                        Text(
+                          '输出',
+                          style: AppTextStyles.bodySecondary.copyWith(
+                            color: Colors.green.shade700,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      result.output,
+                      style: AppTextStyles.bodySecondSmall.copyWith(
+                        fontFamily: 'JetBrainsMono',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            
+            if (result.error?.isNotEmpty == true) ...[
+              if (result.output.isNotEmpty) const SizedBox(height: 8),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade50,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: Colors.red.shade200),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.error, color: Colors.red.shade600, size: 16),
+                        const SizedBox(width: 4),
+                        Text(
+                          '错误',
+                          style: AppTextStyles.bodySecondary.copyWith(
+                            color: Colors.red.shade700,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      result.error!,
+                      style: AppTextStyles.bodySecondSmall.copyWith(
+                        fontFamily: 'JetBrainsMono',
+                        color: Colors.red.shade700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Icon(
+                  result.success ? Icons.check_circle : Icons.error,
+                  color: result.success ? Colors.green.shade600 : Colors.red.shade600,
+                  size: 16,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  '退出码: ${result.exitCode ?? 'N/A'}',
+                  style: AppTextStyles.bodySecondXSmall.copyWith(
+                    color: result.success ? Colors.green.shade700 : Colors.red.shade700,
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  '执行时间: ${result.timestamp.hour.toString().padLeft(2, '0')}:${result.timestamp.minute.toString().padLeft(2, '0')}:${result.timestamp.second.toString().padLeft(2, '0')}',
+                  style: AppTextStyles.bodySecondXSmall,
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  // 执行对比命令
+  Future<void> _executeCompareCommand() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() => _isExecuting = true);
+
+    try {
+      final command = _buildFullCommand();
+      final result = await _executeShellCommand(command);
+      setState(() => _lastResult = result);
+      
+      // 如果命令执行成功，保存参数值到配置中并折叠参数配置区域
+      if (result.success) {
+        await _saveParameterValues();
+        // 折叠参数配置区域
+        setState(() {
+          _isParameterSectionExpanded = false;
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _lastResult = PluginExecutionResult(
+          success: false,
+          output: '',
+          error: e.toString(),
+          timestamp: DateTime.now(),
+        );
+      });
+    } finally {
+      setState(() => _isExecuting = false);
+    }
+  }
+}
   

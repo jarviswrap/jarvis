@@ -2,9 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'screens/home_screen.dart';
 import 'core/utils/app_text_styles.dart';
+import 'core/utils/app_logger.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // 初始化日志系统
+  await AppLogger.initialize();
   
   // 立即启动应用，插件将在 HomeScreen 中异步加载
   runApp(const ProviderScope(child: JarvisApp()));
@@ -28,7 +32,7 @@ class JarvisApp extends StatelessWidget {
         
         // 使用统一的文本主题
         textTheme: const TextTheme(
-          displayLarge: AppTextStyles.titlePage,
+          displayLarge: AppTextStyles.pageTitle,
           displayMedium: AppTextStyles.cardTitle,
           displaySmall: AppTextStyles.sectionTitle,
           headlineLarge: AppTextStyles.cardTitle,
