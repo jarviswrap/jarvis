@@ -6,6 +6,21 @@ class AppLayoutConfig {
   // 私有构造函数，防止实例化
   AppLayoutConfig._();
 
+    // ========== 圆角配置 ==========
+  /// 小圆角
+  static const double radiusSmall = 4.0;
+  
+  /// 中等圆角
+  static const double radiusMedium = 6.0;
+  
+  /// 大圆角
+  static const double radiusLarge = 8.0;
+  
+  /// 超大圆角
+  static const double radiusXLarge = 12.0;
+
+  static const double pagePaddingValue = 10.0;
+
   // ========== Card相关配置 ==========
   /// Card内部padding
   static const EdgeInsets cardPadding = EdgeInsets.all(6);
@@ -24,7 +39,7 @@ class AppLayoutConfig {
 
   // ========== 页面布局配置 ==========
   /// 页面内容padding
-  static const EdgeInsets pagePadding = EdgeInsets.all(10);
+  static const EdgeInsets pagePadding = EdgeInsets.all(pagePaddingValue);
   
   /// 页面内容margin
   static const EdgeInsets pageMargin = EdgeInsets.all(16);
@@ -67,41 +82,28 @@ class AppLayoutConfig {
   }
   
   /// 创建小垂直间距
-  static Widget get verticalSpacingSmall => SizedBox(height: spacingSmall);
+  static Widget get verticalSpacingSmall => const SizedBox(height: spacingSmall);
   
   /// 创建中等垂直间距
-  static Widget get verticalSpacingMedium => SizedBox(height: spacingMedium);
+  static Widget get verticalSpacingMedium => const SizedBox(height: spacingMedium);
   
   /// 创建大垂直间距
-  static Widget get verticalSpacingLarge => SizedBox(height: spacingLarge);
+  static Widget get verticalSpacingLarge => const SizedBox(height: spacingLarge);
   
   /// 创建超大垂直间距
-  static Widget get verticalSpacingXLarge => SizedBox(height: spacingXLarge);
+  static Widget get verticalSpacingXLarge => const SizedBox(height: spacingXLarge);
   
   /// 创建小水平间距
-  static Widget get horizontalSpacingSmall => SizedBox(width: spacingSmall);
+  static Widget get horizontalSpacingSmall => const SizedBox(width: spacingSmall);
   
   /// 创建中等水平间距
-  static Widget get horizontalSpacingMedium => SizedBox(width: spacingMedium);
+  static Widget get horizontalSpacingMedium => const SizedBox(width: spacingMedium);
   
   /// 创建大水平间距
-  static Widget get horizontalSpacingLarge => SizedBox(width: spacingLarge);
+  static Widget get horizontalSpacingLarge => const SizedBox(width: spacingLarge);
   
   /// 创建超大水平间距
-  static Widget get horizontalSpacingXLarge => SizedBox(width: spacingXLarge);
-
-  // ========== 圆角配置 ==========
-  /// 小圆角
-  static const double radiusSmall = 4.0;
-  
-  /// 中等圆角
-  static const double radiusMedium = 6.0;
-  
-  /// 大圆角
-  static const double radiusLarge = 8.0;
-  
-  /// 超大圆角
-  static const double radiusXLarge = 12.0;
+  static Widget get horizontalSpacingXLarge => const SizedBox(width: spacingXLarge);
 
   /// 创建圆角边框
   static BorderRadius borderRadius(double radius) {

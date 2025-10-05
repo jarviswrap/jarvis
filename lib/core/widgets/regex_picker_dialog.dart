@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../utils/regex_config_loader.dart';
 import '../utils/app_text_styles.dart';
+import '../utils/regex_utils.dart';
 
 class RegexPickerDialog extends StatefulWidget {
   final String? initialValue;
@@ -331,6 +332,9 @@ class _RegexTestDialogState extends State<RegexTestDialog> {
   final TextEditingController _testController = TextEditingController();
   String? _testResult;
   bool _isMatch = false;
+  // 新增：两种转换结果
+  String? _resultAcross;            // RegexUtils.extractGroup1AcrossLines 输出
+  String? _resultPerLine;           // RegexUtils.extractAllGroupsPerLine 输出
 
   @override
   void dispose() {
@@ -344,6 +348,8 @@ class _RegexTestDialogState extends State<RegexTestDialog> {
       setState(() {
         _testResult = '请输入测试文本';
         _isMatch = false;
+        _resultAcross = null;
+        _resultPerLine = null;
       });
       return;
     }
@@ -351,14 +357,24 @@ class _RegexTestDialogState extends State<RegexTestDialog> {
     try {
       final regex = RegExp(widget.pattern);
       final matches = regex.hasMatch(testText);
+      // 计算两种转换
+      final across = RegexUtils.extractGroup1AcrossLines(testText, widget.pattern);
+      final perLine = RegexUtils.extractAllGroupsPerLine(testText, widget.pattern);
       setState(() {
         _isMatch = matches;
         _testResult = matches ? '✅ 匹配成功' : '❌ 不匹配';
+        _resultAcross = across;
+        _resultPerLine = perLine;
       });
     } catch (e) {
+      // 正则解析失败时仍尝试转换（内部已捕获异常并回退为原文）
+      final across = RegexUtils.extractGroup1AcrossLines(testText, widget.pattern);
+      final perLine = RegexUtils.extractAllGroupsPerLine(testText, widget.pattern);
       setState(() {
         _testResult = '❌ 正则表达式格式错误: $e';
         _isMatch = false;
+        _resultAcross = across;
+        _resultPerLine = perLine;
       });
     }
   }
@@ -389,6 +405,9 @@ class _RegexTestDialogState extends State<RegexTestDialog> {
           ),
           const SizedBox(height: 16),
           if (_testResult != null) _buildTestResult(),
+          const SizedBox(height: 12),
+          // 新增：展示两种转换结果
+          _buildTransformResults(),
         ],
       ),
       actions: [
@@ -397,6 +416,35 @@ class _RegexTestDialogState extends State<RegexTestDialog> {
     );
   }
 
+  Widget _buildTransformResults() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('转换结果（方式一：按行取首个分组并用空格连接）', style: TextStyle(color: Colors.grey.shade700, fontSize: 12)),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(8),
+          margin: const EdgeInsets.only(top: 6, bottom: 12),
+          decoration: BoxDecoration(
+            color: Colors.grey.shade100,
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Text(_resultAcross ?? '', style: const TextStyle(fontFamily: 'monospace')),
+        ),
+        Text('转换结果（方式二：每行收集所有分组并按行输出）', style: TextStyle(color: Colors.grey.shade700, fontSize: 12)),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(8),
+          margin: const EdgeInsets.only(top: 6),
+          decoration: BoxDecoration(
+            color: Colors.grey.shade100,
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Text(_resultPerLine ?? '', style: const TextStyle(fontFamily: 'monospace')),
+        ),
+      ],
+    );
+  }
   Widget _buildTestResult() {
     return Container(
       padding: const EdgeInsets.all(12),

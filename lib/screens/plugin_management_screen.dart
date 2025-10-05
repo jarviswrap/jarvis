@@ -102,7 +102,7 @@ class _PluginManagementScreenState extends State<PluginManagementScreen> {
                     icon: Icons.terminal,
                     title: category,
                     iconColor: Colors.cyan.shade700,
-                    initiallyExpanded: true,
+                    expanded: true,
                     children: plugins.map((plugin) => _buildPluginTile(plugin)).toList(),
                   );
                 },

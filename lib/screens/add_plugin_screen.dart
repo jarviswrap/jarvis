@@ -8,6 +8,7 @@ import '../core/widgets/plugin_import_dialog.dart';
 import '../core/utils/app_text_styles.dart';
 import '../core/utils/app_layout_config.dart';
 import '../core/widgets/collapsible_section.dart';
+import '../core/widgets/common_components.dart';
 
 class AddPluginScreen extends StatefulWidget {
   final PluginConfig? editingPlugin;
@@ -361,27 +362,9 @@ class _AddPluginScreenState extends State<AddPluginScreen> {
                     }).toList()),
                   
                   // 预览完整命令
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade100,
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(color: Colors.grey.shade300),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          '命令预览:',
-                          style: AppTextStyles.bodySecondary,
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          _buildCommandPreview(),
-                          style: AppTextStyles.bodySecondSmall,
-                        ),
-                      ],
-                    ),
+                  CommonComponents.codeBlock(
+                    _buildCommandPreview(),
+                    emptyHint: '请配置参数后查看命令预览',
                   ),
                 ],
               ),

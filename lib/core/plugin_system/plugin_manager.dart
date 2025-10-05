@@ -146,10 +146,10 @@ class PluginManager {
 
   /// 合并默认配置和已存储配置
   PluginConfig _mergeConfigs(PluginConfig defaultConfig, PluginConfig storedConfig) {
-    // 保留用户的自定义设置（如 enabled 状态），但更新默认配置的新字段
+    // 保留用户的启用状态与展示配置，默认配置用于补充新增字段
     return defaultConfig.copyWith(
-      enabled: storedConfig.enabled, // 保留用户的启用状态
-      // 可以根据需要保留更多用户自定义字段
+      enabled: storedConfig.enabled,
+      displayConfig: storedConfig.displayConfig,
     );
   }
 

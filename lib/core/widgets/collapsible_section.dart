@@ -7,11 +7,11 @@ class CollapsibleSection extends StatefulWidget {
   final String title;
   final String? collapsedSummaryText;
   final List<Widget> children;
-  final bool initiallyExpanded;
   final ValueChanged<bool>? onExpansionChanged;
   final Color? iconColor;
   final double? childrenSpacing;
   final List<Widget> Function(bool expanded)? trailingBuilder;
+  final bool? expanded;
 
   const CollapsibleSection({
     super.key,
@@ -19,7 +19,7 @@ class CollapsibleSection extends StatefulWidget {
     required this.title,
     this.collapsedSummaryText,
     required this.children,
-    this.initiallyExpanded = true,
+    this.expanded = true,
     this.onExpansionChanged,
     this.iconColor,
     this.childrenSpacing,
@@ -36,14 +36,28 @@ class _CollapsibleSectionState extends State<CollapsibleSection> {
   @override
   void initState() {
     super.initState();
-    _expanded = widget.initiallyExpanded;
+    _expanded = widget.expanded!;
+  }
+
+  @override
+  void didUpdateWidget(covariant CollapsibleSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.expanded != null && widget.expanded != _expanded) {
+      setState(() {
+        _expanded = widget.expanded!;
+      });
+    }
   }
 
   void _toggle() {
-    setState(() {
-      _expanded = !_expanded;
-    });
-    widget.onExpansionChanged?.call(_expanded);
+    if (widget.expanded != null) {
+      widget.onExpansionChanged?.call(!_expanded);
+    } else {
+      setState(() {
+        _expanded = !_expanded;
+      });
+      widget.onExpansionChanged?.call(_expanded);
+    }
   }
   @override
   Widget build(BuildContext context) {

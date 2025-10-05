@@ -26,12 +26,14 @@ class AppTextStyles {
 
   // 获取输入框装饰器
   static InputDecoration getInputDecoration(
-    String labelText, 
+    String labelText,
     String hintText, {
     VoidCallback? onTap,
     IconData? suffixIconData,
     Color? suffixIconColor,
     IconData? prefixIconData,
+    bool isMultiline = false,
+    Widget? suffixIconWidget, // 新增：支持传入自定义后缀组件
   }) {
     return InputDecoration(
       labelText: labelText,
@@ -58,10 +60,11 @@ class AppTextStyles {
         borderRadius: BorderRadius.circular(6),
       ),
       contentPadding: EdgeInsets.symmetric(
-        horizontal: 12, 
-        vertical: suffixIconData != null || prefixIconData != null ? 0 : 13,
+        horizontal: 12,
+        vertical: isMultiline
+            ? 8
+            : ((suffixIconWidget != null || suffixIconData != null || prefixIconData != null) ? 0 : 13),
       ),
-      isDense: true,
       filled: true,
       fillColor: Colors.white,
       prefixIcon: prefixIconData != null 
@@ -78,8 +81,8 @@ class AppTextStyles {
               width: 24,
               height: 24,
               alignment: Alignment.center,
-              child: Icon(
-                suffixIconData ?? Icons.clear, 
+              child: suffixIconWidget ?? Icon(
+                suffixIconData ?? Icons.clear,
                 size: 16,
                 color: suffixIconColor ?? Colors.grey.shade600,
               ),

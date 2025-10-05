@@ -257,6 +257,7 @@ class PluginConfig {
     String? icon,
     bool? enabled,
     CommandConfig? commandConfig,
+    DisplayConfig? displayConfig, // 新增：保留展示配置
   }) {
     return PluginConfig(
       id: id ?? this.id,
@@ -265,6 +266,7 @@ class PluginConfig {
       type: type ?? this.type,
       icon: icon ?? this.icon,
       enabled: enabled ?? this.enabled,
+      displayConfig: displayConfig ?? this.displayConfig, // 新增：传递展示配置
       commandConfig: commandConfig ?? this.commandConfig,
     );
   }
