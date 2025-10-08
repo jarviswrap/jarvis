@@ -14,7 +14,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.35.3'  # 替换为你本地实际版本
+          flutter-version: '3.35.3'
           channel: 'stable'
       - name: Enable macOS desktop
         run: flutter config --enable-macos-desktop
@@ -22,11 +22,24 @@ jobs:
         run: flutter pub get
       - name: Build macOS
         run: flutter build macos --release
-      - name: Upload artifact (macos)
+      - name: Create DMG (macOS)
+        shell: bash
+        run: |
+          set -e
+          APP_PATH=$(ls build/macos/Build/Products/Release/*.app | head -n 1)
+          APP_DIR=$(dirname "$APP_PATH")
+          STAGING="$APP_DIR/dmg_src"
+          DMG_PATH="$APP_DIR/jarvis-macos.dmg"
+          rm -rf "$STAGING"
+          mkdir -p "$STAGING"
+          cp -R "$APP_PATH" "$STAGING/"
+          hdiutil create -volname Jarvis -srcfolder "$STAGING" -ov -format UDZO "$DMG_PATH"
+          echo "DMG_PATH=$DMG_PATH" >> $GITHUB_ENV
+      - name: Upload artifact (macOS DMG)
         uses: actions/upload-artifact@v4
         with:
           name: jarvis-macos
-          path: build/macos/**
+          path: ${{ env.DMG_PATH }}
 
   release:
     runs-on: ubuntu-latest
@@ -34,10 +47,11 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
+          name: jarvis-macos
           path: dist
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/**
+          files: dist/jarvis-macos.dmg
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
