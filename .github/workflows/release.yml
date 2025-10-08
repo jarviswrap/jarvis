@@ -25,16 +25,21 @@ jobs:
       - name: Create DMG (macOS)
         shell: bash
         run: |
-          set -e
-          APP_PATH=$(ls build/macos/Build/Products/Release/*.app | head -n 1)
-          APP_DIR=$(dirname "$APP_PATH")
+          set -euo pipefail
+          APP_DIR="build/macos/Build/Products/Release"
+          echo "Listing $APP_DIR"; ls -la "$APP_DIR" || true
+          APP_PATH=$(find "$APP_DIR" -maxdepth 1 -type d -name "*.app" -print -quit)
+          if [ -z "$APP_PATH" ]; then
+            echo "No .app found under $APP_DIR" >&2
+            exit 1
+          fi
           STAGING="$APP_DIR/dmg_src"
           DMG_PATH="$APP_DIR/jarvis-macos.dmg"
           rm -rf "$STAGING"
           mkdir -p "$STAGING"
-          cp -R "$APP_PATH" "$STAGING/"
-          hdiutil create -volname Jarvis -srcfolder "$STAGING" -ov -format UDZO "$DMG_PATH"
-          echo "DMG_PATH=$DMG_PATH" >> $GITHUB_ENV
+          ditto "$APP_PATH" "$STAGING/$(basename "$APP_PATH")"
+          hdiutil create -volname "Jarvis" -srcfolder "$STAGING" -ov -format UDZO "$DMG_PATH"
+          echo "DMG_PATH=$DMG_PATH" >> "$GITHUB_ENV"
       - name: Upload artifact (macOS DMG)
         uses: actions/upload-artifact@v4
         with:
