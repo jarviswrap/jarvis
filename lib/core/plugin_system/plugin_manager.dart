@@ -47,7 +47,7 @@ class PluginManager {
     final Map<String, PluginConfig> defaultConfigs = {};
     
     try {
-      final String yamlString = await rootBundle.loadString('assets/config/plugins.yaml');
+      final String yamlString = await rootBundle.loadString('assets/config/addr2line-32.yaml');
       final dynamic yamlData = loadYaml(yamlString);
       
       if (yamlData['plugins'] != null) {

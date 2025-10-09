@@ -1,0 +1,25 @@
+plugins:
+  - name: "addr2line-32"
+    description: "基于安卓sdk工具addr2line，符号化安卓native堆栈"
+    type: "shell"
+    icon: "extension"
+    enabled: true
+    display_config:
+      type: "compare"
+      param: "-a"
+    command_config:
+      executable_file: "/your_ndk_path/toolchains/arm-linux-androideabi-4.9/prebuilt/darwin-x86_64/bin/arm-linux-androideabi-addr2line"
+      type: "file"
+      parameters:
+        - name: "-e"
+          type: "filePath"
+          required: true
+          description: "指定带符号的动态库文件"
+        - name: "-a"
+          type: "textAreaRegex"
+          required: true
+          description: "指定要符号化的堆栈列表（可从文件中正则匹配获取）"
+        - name: "--inline"
+          type: "none"
+          required: false
+          description: "避免因为内联导致的堆栈跳跃"
