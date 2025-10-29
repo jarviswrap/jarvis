@@ -60,7 +60,7 @@ class NsSyntax {
     errors.clear();
   }
 
-  // 词法：将一行切成 token 并保存到 lineTokens[index]
+  // lex 是 lexical analysis （词法分析）的缩写，词法：将一行切成 token 并保存到 lineTokens[index]
   List<NSToken> lex({required String line, required int index}) {
     final toks = <NSToken>[];
     int i = 0;
@@ -814,6 +814,7 @@ class NsSyntax {
     return -1;
   }
 
+  // 找到行内的第一个非空白和注释token
   int _firstNonBlankIndex(List<NSToken> toks) {
     for (int i = 0; i < toks.length; i++) {
       final t = toks[i];
@@ -822,6 +823,7 @@ class NsSyntax {
     return -1;
   }
 
+  // 去掉行内的空白和注释token
   List<NSToken> _stripBlanks(List<NSToken> t) =>
       t.where((x) => x.kind != NSTokenKind.blank && x.kind != NSTokenKind.comment).toList();
 

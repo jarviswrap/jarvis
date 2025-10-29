@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:highlight/highlight.dart' show Mode;
 
 enum NSTokenKind {
   type,     // 类型（int、bool）

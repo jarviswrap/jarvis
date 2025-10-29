@@ -110,28 +110,114 @@ class _CodeViewerState extends State<CodeViewer> {
       fontSize: 12,
       height: 1.4,
     );
-
+  late final FocusNode _focusNode;
   bool _syncing = false;
 
   // 新增：内部可编辑控制器（语法高亮）
   late final SyntaxHighlightController _controller;
 
+  // 文本变化跟踪变量
+  String _lastText = '';
+  TextSelection _lastSelection = const TextSelection.collapsed(offset: 0);
+  bool _lastCharWasNonWhitespace = false; // 上一个字符是否为非空字符
+
   // 文本变化时触发布局更新（行号与内容保持同步）
   void _onControllerChanged() {
     if (!mounted) return;
-    setState(() {});
+
+    final value = _controller.value;
+    // 输入法合成阶段跳过重建
+    if (value.composing.isValid) {
+      _lastText = _controller.text;
+      _lastSelection = _controller.selection;
+      return;
+    }
+
+    final newText = _controller.text;
+    final newSelection = _controller.selection;
+    if (!newSelection.isValid) {
+      _lastText = newText;
+      _lastSelection = newSelection;
+      return;
+    }
+
+    bool shouldUpdate = false;
+    final textLengthDiff = newText.length - _lastText.length;
+    final cursorPos = newSelection.extentOffset.clamp(0, newText.length);
+
+    if (textLengthDiff == 1 && cursorPos >= 1) {
+      // 单字符插入
+      final insertedChar = newText.codeUnitAt(cursorPos - 1);
+      final isNewline = insertedChar == 10; // '\n'
+      final isWhitespace = insertedChar == 32 || insertedChar == 9; // 空格或Tab
+      final isNonWhitespace = !isWhitespace && !isNewline;
+
+      if (isNewline) {
+        // 规则1：换行时立即重建
+        shouldUpdate = true;
+        _lastCharWasNonWhitespace = false;
+      } else if (isWhitespace && _lastCharWasNonWhitespace) {
+        // 规则2：连续输入非空字符后遇到空字符时重建
+        shouldUpdate = true;
+        _lastCharWasNonWhitespace = false;
+      } else if (isNonWhitespace) {
+        _lastCharWasNonWhitespace = true;
+      } else {
+        _lastCharWasNonWhitespace = false;
+      }
+    } else if (textLengthDiff == -1 && cursorPos < _lastText.length) {
+      // 单字符删除
+      final deletedChar = _lastText.codeUnitAt(cursorPos);
+      final isWhitespace = deletedChar == 32 || deletedChar == 9; // 空格或Tab
+      final isNewline = deletedChar == 10; // '\n'
+      
+      if (isNewline) {
+        // 删除换行符时重建
+        shouldUpdate = true;
+        _lastCharWasNonWhitespace = false;
+      } else if (isWhitespace && _lastCharWasNonWhitespace) {
+        // 规则3：连续删除非空字符后遇到空字符时重建
+        shouldUpdate = true;
+        _lastCharWasNonWhitespace = false;
+      } else if (!isWhitespace && !isNewline) {
+        _lastCharWasNonWhitespace = true;
+      } else {
+        _lastCharWasNonWhitespace = false;
+      }
+    } else if (textLengthDiff != 0) {
+      // 批量操作（粘贴、剪切等）时重建
+      shouldUpdate = true;
+      _lastCharWasNonWhitespace = false;
+    }
+
+    _lastText = newText;
+    _lastSelection = newSelection;
+
+    if (shouldUpdate) {
+      setState(() {});
+    }
   }
 
+  bool needUpdate(int line, String lineText) {
+    return lineText.isNotEmpty;
+  }
+  
   @override
   void initState() {
     super.initState();
+    _focusNode = FocusNode();
     // 仅使用外部传入的高亮映射；未提供或为空则不高亮
     Map<RegExp, TextStyle>? pm;
     if (widget.highlightMap != null && widget.highlightMap!.isNotEmpty) {
       pm = buildPatternMapFromRegexColors(widget.highlightMap!, baseTextStyle);
     }
-
     _controller = SyntaxHighlightController(text: widget.text, patternMap: pm);
+    
+    // 初始化文本跟踪变量
+    _lastText = widget.text;
+    _lastSelection = const TextSelection.collapsed(offset: 0);
+    _lastCharWasNonWhitespace = false;
+    
     // 监听文本变化用于更新行号区域
     _controller.addListener(_onControllerChanged);
   }
@@ -168,6 +254,7 @@ class _CodeViewerState extends State<CodeViewer> {
 
   @override
   void dispose() {
+    _focusNode.dispose();
     _codeScrollController.dispose();
     _gutterScrollController.dispose();
     // 移除监听，避免内存泄漏
@@ -339,7 +426,7 @@ class _CodeViewerState extends State<CodeViewer> {
                   controller: _controller,
                   textAlign: TextAlign.left,
                   textAlignVertical: TextAlignVertical.top,
-                  focusNode: FocusNode(),
+                  focusNode: _focusNode,
                   readOnly: false,
                   maxLines: null,
                   expands: true,
