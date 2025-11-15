@@ -69,112 +69,24 @@ class NsSyntax {
       return toks;
     }
 
-    bool isBlank(int c) => c == 9 || c == 32;
-    bool isCommentStart(int c) => c == 35; // '#'
-    bool isDigit(int c) => c >= 48 && c <= 57;
-    bool isIdentStart(int c) => (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c == 95;
-    bool isIdentChar(int c) => isIdentStart(c) || isDigit(c);
-    bool isQuote(int c) => c == 34; // 新增：双引号
-    void skipBlanks() {
-      final start = i;
-      while (i < line.length && isBlank(line.codeUnitAt(i))) i++;
-      if (i > start) {
-        toks.add(NSToken(NSTokenKind.blank, line.substring(start, i)));
-      }
-    }
-
     while (i < line.length) {
-      skipBlanks();
-      if (i >= line.length) break;
-      final c = line.codeUnitAt(i);
-
-      if (isCommentStart(c)) {
-        toks.add(NSToken(NSTokenKind.comment, line.substring(i)));
-        break;
-      }
-
-      // 新增：字符串字面量解析
-      if (isQuote(c)) {
-        i++; // 跳过开引号
-        final buf = StringBuffer();
-        while (i < line.length) {
-          final cc = line.codeUnitAt(i);
-          if (cc == 34) { i++; break; } // 结束引号
-          if (cc == 92 && i + 1 < line.length) { // 反斜杠转义
-            final esc = line[i + 1];
-            switch (esc) {
-              case 'n': buf.write('\n'); break;
-              case 't': buf.write('\t'); break;
-              case 'r': buf.write('\r'); break;
-              case '"': buf.write('"'); break;
-              case '\\': buf.write('\\'); break;
-              default: buf.write(esc); break;
-            }
-            i += 2; continue;
-          }
-          buf.write(String.fromCharCode(cc));
-          i++;
+      bool matched = false;
+      for (final kind in NSTokenKind.lexOrder) {
+        final r = kind.parseAt(line, i);
+        if (r != null) {
+          toks.add(r.token);
+          i = r.nextIndex;
+          matched = true;
+          // 注释解析直接到行末，退出循环
+          if (kind == NSTokenKind.comment) { i = line.length; }
+          break;
         }
-        toks.add(NSToken(NSTokenKind.stringLit, buf.toString()));
-        continue;
       }
-
-      if (isDigit(c)) {
-        final s = i;
+      if (!matched) {
+        // 其他不可识别字符直接作为标识符（单字符）
+        toks.add(NSToken(NSTokenKind.ident, line[i]));
         i++;
-        while (i < line.length && isDigit(line.codeUnitAt(i))) i++;
-        final word = line.substring(s, i);
-        toks.add(NSToken(NSTokenKind.intLit, int.parse(word)));
-        continue;
       }
-
-      if (isIdentStart(c)) {
-        final s = i;
-        i++;
-        while (i < line.length && isIdentChar(line.codeUnitAt(i))) i++;
-        final word = line.substring(s, i);
-        final lower = word.toLowerCase();
-
-        final kwIdx = nsKeywords.indexOf(lower);
-        if (kwIdx != -1) {
-          toks.add(NSToken(NSTokenKind.keyword, kwIdx));
-          continue;
-        }
-        final typeIdx = nsTypes.indexOf(lower);
-        if (typeIdx != -1) {
-          toks.add(NSToken(NSTokenKind.type, typeIdx));
-          continue;
-        }
-        if (lower == 'true' || lower == 'false') {
-          toks.add(NSToken(NSTokenKind.boolLit, lower == 'true'));
-          continue;
-        }
-        toks.add(NSToken(NSTokenKind.ident, word));
-        continue;
-      }
-
-      // 操作符：尝试最长匹配（>= <= == != && ||），否则单字符
-      String? op;
-      if (i + 1 < line.length) {
-        final two = line.substring(i, i + 2);
-        if (two == '>=' || two == '<=' || two == '==' || two == '!=' || two == '&&' || two == '||' || two == '->') {
-          op = two; i += 2;
-        }
-      }
-      if (op == null) {
-        final ch = String.fromCharCode(c);
-        const singles = ['+', '-', '*', '/', '%', '(', ')', '=', '>', '<', '!'];
-        if (singles.contains(ch)) { op = ch; i++; }
-      }
-      if (op != null) {
-        final idx = nsOperators.indexOf(op);
-        toks.add(NSToken(NSTokenKind.operator, idx));
-        continue;
-      }
-
-      // 其他不可识别字符直接作为标识符
-      toks.add(NSToken(NSTokenKind.ident, String.fromCharCode(c)));
-      i++;
     }
 
     _ensureLine(index, toks);
@@ -597,9 +509,8 @@ class NsSyntax {
             if (endIdx == -1) { errors.add('Line ${j + 1}: missing "end" for if'); return nodes; }
             final elseIdx = _findElse(j + 1, endIdx);
             final cond = toks.sublist(headIdx + 1);
-            // 关键修正：then 分支不包含 else 行
             final thenEnd = elseIdx == -1 ? endIdx : (elseIdx - 1);
-            final thenNodes = _parseRange(j + 1, thenEnd);
+            final thenNodes = _parseRange(j + 1, thenEnd); // 条件为 true 时需要执行的那一段代码块，在这里称为 then 分支
             final elseNodes = elseIdx == -1 ? null : _parseRange(elseIdx + 1, endIdx);
             nodes.add(_NodeIf(j, headIdx + 1, cond, thenNodes, elseNodes));
             j = endIdx + 1;
@@ -631,7 +542,7 @@ class NsSyntax {
             j++;
             continue;
           default:
-            errors.add('Line ${j + 1}: unknown keyword "$kw"');
+            errors.add('Line ${j + 1}: keyword "$kw" can not at line head');
             j++; continue;
         }
       } else {
@@ -783,7 +694,7 @@ class NsSyntax {
       final h = toks[idx];
       if (h.kind == NSTokenKind.keyword) {
         final kw = nsKeywords[h.value as int];
-        if (kw == 'if' || kw == 'while') {
+        if (kw == 'if' || kw == 'while') { // 任何会形成新块并以 end 结束的关键字（这里是 if 和 while ）都增加深度 nest++ ；遇到 end 则 nest-- 。
           nest++;
         } else if (kw == 'end') {
           if (nest > 0) nest--;
@@ -804,7 +715,7 @@ class NsSyntax {
       final h = toks[idx];
       if (h.kind == NSTokenKind.keyword) {
         final kw = nsKeywords[h.value as int];
-        if (kw == 'if' || kw == 'while') nest++;
+        if (kw == 'if' || kw == 'while') { nest++; }
         else if (kw == 'end') {
           nest--;
           if (nest == 0) return j;

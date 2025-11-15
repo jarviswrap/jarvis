@@ -36,7 +36,7 @@ class _NodeExpr extends _AstNode {
 class _NodeIf extends _AstNode {
   final int condStartCol;
   final List<NSToken> cond;
-  final List<_AstNode> thenNodes;
+  final List<_AstNode> thenNodes; // 条件为 true 时需要执行的那一段代码块，在这里称为 then 分支
   final List<_AstNode>? elseNodes;
   const _NodeIf(super.lineNo, this.condStartCol, this.cond, this.thenNodes, this.elseNodes);
 }

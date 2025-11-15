@@ -87,6 +87,13 @@ class _ScriptBody extends JarvisStatefulState<NsScriptPage> {
   List<String> _outputs = [];
   List<String> _errors = [];
   List<String> _logs = [];
+  // 监听 appLogger.entries 用于更新日志
+  void _onLogEntriesChanged() {
+    if (!mounted) return;
+    setState(() {
+      _logs = List<String>.from(appLogger.entries.value);
+    });
+  }
 
   // 持久化键
   static const _prefKeyShowSidebar = 'vscode_show_sidebar';
@@ -132,6 +139,9 @@ class _ScriptBody extends JarvisStatefulState<NsScriptPage> {
     super.initState();
     _initLayoutFromPrefs();
     ScriptsDataStore.instance.init();
+    // 初始化日志为当前已收集的 entries，并绑定监听
+    _logs = List<String>.from(appLogger.entries.value);
+    appLogger.entries.addListener(_onLogEntriesChanged);
   }
 
   // 双击历史项回填脚本到编辑器
@@ -145,6 +155,7 @@ class _ScriptBody extends JarvisStatefulState<NsScriptPage> {
   void dispose() {
     _hCtrl.dispose();
     _vCtrl.dispose();
+    appLogger.entries.removeListener(_onLogEntriesChanged);
     ScriptsDataStore.instance.dispose();
     super.dispose();
   }
@@ -364,12 +375,10 @@ class _ScriptBody extends JarvisStatefulState<NsScriptPage> {
 
   Future<void> _run() async {
     if (_running) return;
-    appLogger.info('开始执行脚本');
     setState(() {
       _running = true;
       _outputs = [];
       _errors = [];
-      _logs = ['[info] 开始执行脚本'];
     });
 
     final interpreter = NsInterpreter();
@@ -397,7 +406,6 @@ class _ScriptBody extends JarvisStatefulState<NsScriptPage> {
     setState(() {
       _outputs = res.outputs;
       _errors = res.errors;
-      _logs = [..._logs, '[info] 执行结束', '[info] 输出 ${res.outputs.length} 条，错误 ${res.errors.length} 条'];
       _running = false;
     });
     appLogger.info('脚本执行结束');
@@ -456,10 +464,16 @@ class _ScriptBody extends JarvisStatefulState<NsScriptPage> {
         codeStyle: textStyle,
         lineNumberStyle: lineNumberStyle,
         highlightMap: highlightMap,
-        wrap: true, // 自动换行；视觉行不重复显示行号
+        wrap: true,
         background: theme.colorScheme.surface,
         gutterBackground: Colors.transparent,
-        // 其他参数使用默认值即可（padding/gutterPadding/宽度区间）
+        // 新增：同步编辑器最新文本到 currentScripts
+        onChanged: (s) {
+          if (!mounted) return;
+          setState(() {
+            currentScripts = s;
+          });
+        },
       )
     );
   }
@@ -568,44 +582,131 @@ class _MainWithOutput extends StatelessWidget {
 }
 
 // 输出面板（输出 / 错误 / 日志）
-class _OutputPanel extends StatelessWidget {
+class _OutputPanel extends StatefulWidget {
   final List<String> outputs;
   final List<String> errors;
   final List<String> logs;
   const _OutputPanel({required this.outputs, required this.errors, required this.logs});
 
   @override
+  State<_OutputPanel> createState() => _OutputPanelState();
+}
+
+class _OutputPanelState extends State<_OutputPanel> with SingleTickerProviderStateMixin {
+  late final TabController _controller;
+  final List<int> _unread = [0, 0, 0];
+  List<int> _prevLens = [0, 0, 0];
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TabController(length: 3, vsync: this);
+    _controller.addListener(() {
+      if (!_controller.indexIsChanging) return;
+      // 切换到某个 Tab 时，归零其未读计数
+      setState(() {
+        _unread[_controller.index] = 0;
+      });
+    });
+    _prevLens = [widget.outputs.length, widget.errors.length, widget.logs.length];
+  }
+
+  @override
+  void didUpdateWidget(covariant _OutputPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final newLens = [widget.outputs.length, widget.errors.length, widget.logs.length];
+    for (int i = 0; i < 3; i++) {
+      final delta = newLens[i] - _prevLens[i];
+      if (delta > 0) {
+        // 非当前 Tab 的新增数据计入未读
+        if (_controller.index != i) {
+          _unread[i] += delta;
+        } else {
+          // 当前 Tab 新增视为已读，不计红点
+          _unread[i] = 0;
+        }
+      }
+    }
+    _prevLens = newLens;
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Widget _tabLabel(String text, int unreadCount) {
+    final theme = Theme.of(context);
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 2.0, right: 8.0),
+          child: Text(text, style: theme.textTheme.bodyMedium),
+        ),
+        if (unreadCount > 0)
+          Positioned(
+            right: -6,
+            top: -2,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFF4D4F), // 红点底色
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                unreadCount.toString(),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                  height: 1.0,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return DefaultTabController(
-      length: 3,
-      child: Column(
-        children: [
-          Container(
-            height: 36,
-            decoration: BoxDecoration(
-              border: Border(top: BorderSide(color: theme.dividerColor)),
-              color: const Color(0xFF111827),
-            ),
-            child: const TabBar(
-              tabs: [
-                Tab(text: '输出'),
-                Tab(text: '错误'),
-                Tab(text: '日志'),
-              ],
-            ),
+    return Column(
+      children: [
+        Container(
+          height: 36,
+          decoration: BoxDecoration(
+            border: Border(top: BorderSide(color: theme.dividerColor)),
+            color: const Color(0xFF111827),
           ),
-          Expanded(
-            child: TabBarView(
-              children: [
-                _LogList(lines: outputs, color: Colors.white),
-                _LogList(lines: errors, color: const Color(0xFFFFA8A8)),
-                _LogList(lines: logs, color: const Color(0xFFAEDBFF)),
-              ],
-            ),
+          child: TabBar(
+            controller: _controller,
+            tabs: [
+              Tab(child: _tabLabel('输出', _unread[0])),
+              Tab(child: _tabLabel('错误', _unread[1])),
+              Tab(child: _tabLabel('日志', _unread[2])),
+            ],
+            onTap: (i) {
+              // 点击立即清除该 Tab 的红点
+              setState(() {
+                _unread[i] = 0;
+              });
+            },
           ),
-        ],
-      ),
+        ),
+        Expanded(
+          child: TabBarView(
+            controller: _controller,
+            children: [
+              _LogList(lines: widget.outputs, color: Colors.white),
+              _LogList(lines: widget.errors, color: const Color(0xFFFFA8A8)),
+              _LogList(lines: widget.logs, color: const Color(0xFFAEDBFF)),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

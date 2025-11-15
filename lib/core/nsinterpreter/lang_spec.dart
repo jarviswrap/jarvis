@@ -1,16 +1,174 @@
 import 'package:flutter/material.dart';
 
-enum NSTokenKind {
-  type,     // 类型（int、bool）
-  keyword,  // 关键字（let、set、print、if、else、end、while、break、continue）
-  ident,    // 标识符（变量名）
-  operator, // 操作符：+ - * / ( ) = > < >= <= == != && || !
-  comment,  // 注释（# 后整行）
-  blank,    // 空白（连续空格或制表符）
-  intLit,   // 整数字面量
-  boolLit,  // 布尔字面量
-  stringLit, // 新增：字符串字面量
+class LexResult {
+  final NSToken token;
+  final int nextIndex; // 消费到的下一个字符位置
+  const LexResult(this.token, this.nextIndex);
 }
+
+typedef LexHandler = LexResult? Function(String line, int start);
+
+// 增强枚举：为每个 TokenKind 提供解析器（构造参数）
+enum NSTokenKind {
+  // 按定义顺序作为词法优先级
+  blank(_lexBlank),
+  comment(_lexComment),
+  stringLit(_lexString),
+  intLit(_lexInt),
+  keyword(_lexKeyword),
+  type(_lexType),
+  boolLit(_lexBool),
+  ident(_lexIdent),
+  operator(_lexOperator),
+  ;
+
+  final LexHandler parseAt;
+  const NSTokenKind(this.parseAt);
+
+  // 词法解析顺序：直接使用枚举定义顺序
+  static List<NSTokenKind> get lexOrder => NSTokenKind.values;
+}
+
+// ====== 解析器实现（顶层私有函数） ======
+LexResult? _lexBlank(String line, int start) {
+  if (start >= line.length) return null;
+  int i = start;
+  while (i < line.length) {
+    final c = line.codeUnitAt(i);
+    if (!_isBlank(c)) break;
+    i++;
+  }
+  if (i > start) {
+    return LexResult(NSToken(NSTokenKind.blank, line.substring(start, i)), i);
+  }
+  return null;
+}
+
+LexResult? _lexComment(String line, int start) {
+  if (start >= line.length) return null;
+  final c = line.codeUnitAt(start);
+  if (c == 35) { // '#'
+    return LexResult(NSToken(NSTokenKind.comment, line.substring(start)), line.length);
+  }
+  return null;
+}
+
+LexResult? _lexString(String line, int start) {
+  if (start >= line.length) return null;
+  if (line.codeUnitAt(start) != 34) return null; // '"'
+  int i = start + 1; // 跳过开引号
+  final buf = StringBuffer();
+  while (i < line.length) {
+    final cc = line.codeUnitAt(i);
+    if (cc == 34) { i++; break; } // 结束引号
+    if (cc == 92 && i + 1 < line.length) { // 反斜杠转义
+      final esc = line[i + 1];
+      switch (esc) {
+        case 'n': buf.write('\n'); break;
+        case 't': buf.write('\t'); break;
+        case 'r': buf.write('\r'); break;
+        case '"': buf.write('"'); break;
+        case '\\': buf.write('\\'); break;
+        default: buf.write(esc); break;
+      }
+      i += 2; continue;
+    }
+    buf.write(String.fromCharCode(cc));
+    i++;
+  }
+  return LexResult(NSToken(NSTokenKind.stringLit, buf.toString()), i);
+}
+
+LexResult? _lexInt(String line, int start) {
+  if (start >= line.length) return null;
+  final c0 = line.codeUnitAt(start);
+  if (!_isDigit(c0)) return null;
+  int i = start + 1;
+  while (i < line.length && _isDigit(line.codeUnitAt(i))) i++;
+  final word = line.substring(start, i);
+  return LexResult(NSToken(NSTokenKind.intLit, int.parse(word)), i);
+}
+
+LexResult? _lexKeyword(String line, int start) {
+  final r = _parseWord(line, start);
+  if (r == null) return null;
+  final lower = r.word.toLowerCase();
+  final kwIdx = nsKeywords.indexOf(lower);
+  if (kwIdx != -1) {
+    return LexResult(NSToken(NSTokenKind.keyword, kwIdx), r.nextIndex);
+  }
+  return null;
+}
+
+LexResult? _lexType(String line, int start) {
+  final r = _parseWord(line, start);
+  if (r == null) return null;
+  final lower = r.word.toLowerCase();
+  final typeIdx = nsTypes.indexOf(lower);
+  if (typeIdx != -1) {
+    return LexResult(NSToken(NSTokenKind.type, typeIdx), r.nextIndex);
+  }
+  return null;
+}
+
+LexResult? _lexBool(String line, int start) {
+  final r = _parseWord(line, start);
+  if (r == null) return null;
+  final lower = r.word.toLowerCase();
+  if (lower == 'true' || lower == 'false') {
+    return LexResult(NSToken(NSTokenKind.boolLit, lower == 'true'), r.nextIndex);
+  }
+  return null;
+}
+
+LexResult? _lexIdent(String line, int start) {
+  final r = _parseWord(line, start);
+  if (r == null) return null;
+  return LexResult(NSToken(NSTokenKind.ident, r.word), r.nextIndex);
+}
+
+LexResult? _lexOperator(String line, int start) {
+  if (start >= line.length) return null;
+  int i = start;
+  String? op;
+  if (i + 1 < line.length) {
+    final two = line.substring(i, i + 2);
+    if (two == '>=' || two == '<=' || two == '==' || two == '!=' || two == '&&' || two == '||' || two == '->') {
+      op = two; i += 2;
+    }
+  }
+  if (op == null) {
+    final ch = String.fromCharCode(line.codeUnitAt(i));
+    const singles = ['+', '-', '*', '/', '%', '(', ')', '=', '>', '<', '!'];
+    if (singles.contains(ch)) { op = ch; i++; }
+  }
+  if (op != null) {
+    final idx = nsOperators.indexOf(op);
+    return LexResult(NSToken(NSTokenKind.operator, idx), i);
+  }
+  return null;
+}
+
+// ====== 通用词法辅助 ======
+class _WordParse {
+  final String word;
+  final int nextIndex;
+  const _WordParse(this.word, this.nextIndex);
+}
+
+_WordParse? _parseWord(String line, int start) {
+  if (start >= line.length) return null;
+  final c0 = line.codeUnitAt(start);
+  if (!_isIdentStart(c0)) return null;
+  int i = start + 1;
+  while (i < line.length && _isIdentChar(line.codeUnitAt(i))) i++;
+  return _WordParse(line.substring(start, i), i);
+}
+
+bool _isBlank(int c) => c == 9 || c == 32;
+bool _isDigit(int c) => c >= 48 && c <= 57;
+bool _isIdentStart(int c) => (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c == 95;
+bool _isIdentChar(int c) => _isIdentStart(c) || _isDigit(c);
 
 const List<String> nsTypes = ['int', 'bool', 'string', 'array', 'file', 'regex']; // 新增 regex
 
@@ -112,59 +270,3 @@ class NSLangSpec {
     return null;
   }
 }
-
-// NS 语言高亮定义：使用 patternMap + stringMap 方式，不使用 language 参数
-// 这样可以避免 language 模式覆盖 patternMap 的问题
-
-// 基于关键字/类型/布尔构造排除集，供标识符/函数名识别用
-final String _reservedWords =
-    [...nsKeywords, ...nsTypes, 'true', 'false'].map(RegExp.escape).join('|');
-
-// 普通标识符（排除关键字/类型/布尔）
-final String _identPattern = r'\b(?!' + _reservedWords + r'\b)[A-Za-z_]\w*\b';
-
-// 函数调用标识符（排除关键字/类型/布尔，且后面跟括号）
-final String _funcCallPattern = _identPattern + r'(?=\s*\()';
-
-// 新增：关键字与类型的正则，用于 patternMap 精确着色
-final String _kwPattern   = r'\b(?:' + nsKeywords.map(RegExp.escape).join('|') + r')\b';
-final String _typePattern = r'\b(?:' + nsTypes.map(RegExp.escape).join('|') + r')\b';
-
-// 正则模式映射：用于匹配复杂的语法结构
-final Map<String, TextStyle> nsPatternMap = {
-  // 注释：# 开头到行尾
-  r'#.*$': const TextStyle(color: NSLangSpec.commentColor, fontStyle: FontStyle.italic),
-
-  // 字符串：双引号或单引号包围，支持转义
-  r'"(?:[^"\\]|\\.)*"': const TextStyle(color: NSLangSpec.stringColor),
-  r"'(?:[^'\\]|\\.)*'": const TextStyle(color: NSLangSpec.stringColor),
-
-  // 数字：整数 / 小数 / 十六进制
-  r'\b\d+(?:\.\d+)?\b': const TextStyle(color: NSLangSpec.intColor),
-  r'\b0x[0-9A-Fa-f]+\b': const TextStyle(color: NSLangSpec.intColor),
-
-  // 操作符：非捕获分组，避免分组索引问题
-  r'(?:->|==|!=|<=|>=|&&|\|\||[+\-*/%()=<>!])': const TextStyle(color: NSLangSpec.operatorColor),
-
-  // 布尔字面量（非捕获分组；stringMap 也会精确匹配）
-  r'\b(?:true|false)\b': const TextStyle(color: NSLangSpec.boolColor),
-
-  // 关键字/类型（新增）
-  _kwPattern:   const TextStyle(color: NSLangSpec.keywordColor),
-  _typePattern: const TextStyle(color: NSLangSpec.typeColor),
-
-  // 标识符：函数调用与普通标识符（参考 colorOfToken 的 identColor）
-  _funcCallPattern: const TextStyle(color: NSLangSpec.identColor),
-  _identPattern: const TextStyle(color: NSLangSpec.identColor),
-};
-
-// 字符串映射：用于精确匹配关键字和类型
-// final Map<String, TextStyle> nsStringMap = {
-//   // 关键字
-//   ...{for (final k in nsKeywords) k: const TextStyle(color: NSLangSpec.keywordColor)},
-//   // 类型
-//   ...{for (final t in nsTypes) t: const TextStyle(color: NSLangSpec.typeColor)},
-//   // 布尔字面量（精确匹配）
-//   'true': const TextStyle(color: NSLangSpec.boolColor),
-//   'false': const TextStyle(color: NSLangSpec.boolColor),
-// };

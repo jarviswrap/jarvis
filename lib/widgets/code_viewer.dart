@@ -82,6 +82,7 @@ class CodeViewer extends StatefulWidget {
   final double gutterMinWidth;
   final double gutterMaxWidth;
   final Map<RegExp, Color>? highlightMap;
+  final ValueChanged<String>? onChanged; // 新增：文本变化回调
 
   const CodeViewer({
     super.key,
@@ -96,6 +97,7 @@ class CodeViewer extends StatefulWidget {
     this.gutterPadding = const EdgeInsets.all(8),
     this.gutterMinWidth = 20.0,
     this.gutterMaxWidth = 96.0,
+    this.onChanged, // 新增：参数
   });
 
   @override
@@ -118,7 +120,6 @@ class _CodeViewerState extends State<CodeViewer> {
 
   // 文本变化跟踪变量
   String _lastText = '';
-  TextSelection _lastSelection = const TextSelection.collapsed(offset: 0);
   bool _lastCharWasNonWhitespace = false; // 上一个字符是否为非空字符
 
   // 文本变化时触发布局更新（行号与内容保持同步）
@@ -129,7 +130,6 @@ class _CodeViewerState extends State<CodeViewer> {
     // 输入法合成阶段跳过重建
     if (value.composing.isValid) {
       _lastText = _controller.text;
-      _lastSelection = _controller.selection;
       return;
     }
 
@@ -137,7 +137,6 @@ class _CodeViewerState extends State<CodeViewer> {
     final newSelection = _controller.selection;
     if (!newSelection.isValid) {
       _lastText = newText;
-      _lastSelection = newSelection;
       return;
     }
 
@@ -190,12 +189,13 @@ class _CodeViewerState extends State<CodeViewer> {
       _lastCharWasNonWhitespace = false;
     }
 
-    _lastText = newText;
-    _lastSelection = newSelection;
+    // 新增：将最新文本通知到上层
+    widget.onChanged?.call(newText);
 
     if (shouldUpdate) {
       setState(() {});
     }
+    _lastText = newText;
   }
 
   bool needUpdate(int line, String lineText) {
@@ -215,7 +215,6 @@ class _CodeViewerState extends State<CodeViewer> {
     
     // 初始化文本跟踪变量
     _lastText = widget.text;
-    _lastSelection = const TextSelection.collapsed(offset: 0);
     _lastCharWasNonWhitespace = false;
     
     // 监听文本变化用于更新行号区域
