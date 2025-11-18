@@ -1,0 +1,8 @@
+name: addr2line
+versionCode: 1
+description: "基于安卓sdk工具addr2line，符号化安卓native堆栈"
+platform:
+  - macos
+  - linux
+
+

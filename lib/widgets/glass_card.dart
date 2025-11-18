@@ -107,9 +107,9 @@ class _GlassCardState extends State<GlassCard> {
                           child: Icon(widget.iconData, color: textColor),
                         ),
                         const SizedBox(width: 12),
-                        const Text(
-                          'Jarvis', // 标题示意（你已有实际标题）
-                          style: TextStyle(
+                        Text(
+                          widget.title,
+                          style: const TextStyle(
                             fontWeight: FontWeight.w700,
                             letterSpacing: 0.2,
                           ),

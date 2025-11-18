@@ -2,6 +2,8 @@ import 'dart:io' show Platform;
 import 'dart:ui';
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
+import 'workflow_page.dart';
+import 'android_sdk_analysis_page.dart';
 import '../widgets/gradient_text.dart';
 import '../widgets/gradient_button.dart';
 import '../widgets/grid_background.dart';
@@ -73,7 +75,7 @@ class HomePage extends JarvisPage {
     final muted = theme.colorScheme.onSurfaceVariant;
 
     const modules = <_Module>[
-      _Module('writer', '文本助手', '写作·总结·翻译', Icons.edit_note),
+      _Module('android_sdk', 'Android SDK依赖分析', '依赖扫描·接口统计·调用来源', Icons.android),
       _Module('schedule', '日程助手', '计划·提醒·同步', Icons.event),
       _Module('files', '文件助手', '检索·预览·归档', Icons.folder_open),
       _Module('automation', '自动化流程', '触发器·动作·编排', Icons.auto_awesome),
@@ -126,7 +128,11 @@ class HomePage extends JarvisPage {
                     alignment: WrapAlignment.center,
                     children: [
                       GradientButton(
-                        onPressed: () {},
+                        onPressed: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(builder: (_) => WorkflowPage()),
+                          );
+                        },
                         padding: const EdgeInsets.symmetric(
                           vertical: 14,
                           horizontal: 20,
@@ -193,18 +199,27 @@ class HomePage extends JarvisPage {
                             hint: m.hint,
                             iconData: m.icon,
                             accent: accent,
-                            status: '即将到来',
+                            status: i == 0 ? '可用' : '即将到来',
                             onTap: () {
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => ModuleDetailPage(
-                                    title: m.title,
-                                    hint: m.hint,
-                                    iconData: m.icon,
-                                    accent: accent,
+                              if (i == 0) {
+                                // 首页第一个模块跳转到 Android SDK 依赖分析页面
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => const AndroidSdkAnalysisPage(),
                                   ),
-                                ),
-                              );
+                                );
+                              } else {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => ModuleDetailPage(
+                                      title: m.title,
+                                      hint: m.hint,
+                                      iconData: m.icon,
+                                      accent: accent,
+                                    ),
+                                  ),
+                                );
+                              }
                             },
                           );
                         },
